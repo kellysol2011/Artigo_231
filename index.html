@@ -110,31 +110,34 @@
     const video = document.getElementById('vid');
     const overlay = document.getElementById('overlay');
 
+    // 1. O clique apenas inicia a câmera e esconde o botão
     btn.addEventListener('click', () => {
-        // 1. Remove o fundo preto imediatamente
         overlay.style.display = 'none';
-        overlay.remove(); 
-
-        // 2. Tenta iniciar o vídeo primeiro (silencioso para não bloquear)
-        video.play().catch(e => console.log("Aguardando interação para som"));
-
-        // 3. Força a inicialização do sistema de RA
-        const arSystem = sceneEl.systems['mindar-image-system'];
         
-        // Pequeno atraso de 300ms para garantir que o navegador processou o clique
-        setTimeout(() => {
-            arSystem.start(); 
-        }, 300);
+        const arSystem = sceneEl.systems['mindar-image-system'];
+        arSystem.start(); // Inicia a busca pela câmera
     });
 
-    // Verificador de Erros em Tempo Real
+    // 2. ESTE É O SEGREDO: Só dá o play quando a tela azul sumir e a câmera aparecer
+    sceneEl.addEventListener("arReady", (event) => {
+        console.log("Câmera pronta! Agora sim o vídeo pode começar.");
+        video.play(); // O som e o vídeo começam agora, sem atraso visual
+    });
+
+    // 3. Caso o alvo seja encontrado, garante que o vídeo esteja rodando
+    sceneEl.addEventListener("targetFound", event => {
+        console.log("Alvo encontrado!");
+        video.play();
+    });
+
+    // 4. Caso o alvo seja perdido, o vídeo pausa (opcional, ajuda na imersão)
+    sceneEl.addEventListener("targetLost", event => {
+        console.log("Alvo perdido");
+        video.pause();
+    });
+
     sceneEl.addEventListener("arError", (event) => {
-        console.error("Erro de RA:", event);
-        alert("A câmera não abriu. Verifique se você deu 'Permitir' no cadeado lá no topo da página.");
-    });
-
-    sceneEl.addEventListener("arReady", () => {
-        console.log("Câmera carregada com sucesso!");
+        alert("Erro ao abrir a câmera. Verifique as permissões no cadeado do navegador.");
     });
 </script>
 </body>
