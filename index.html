@@ -72,8 +72,8 @@
         <button id="btn-start">Iniciar Experiência</button>
     </div>
 
-   <a-scene 
-    mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiScanning: yes; filterMinCF:0.0001; filterBeta: 0.001;" 
+  <a-scene 
+    mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiLoading: yes; uiError: yes; uiScanning: yes;" 
     embedded 
     vr-mode-ui="enabled: false" 
     device-orientation-permission-ui="enabled: false"
@@ -110,34 +110,33 @@
     const video = document.getElementById('vid');
     const overlay = document.getElementById('overlay');
 
-    // 1. O clique apenas inicia a câmera e esconde o botão
     btn.addEventListener('click', () => {
+        console.log("Botão clicado!");
         overlay.style.display = 'none';
         
+        // Força o vídeo a carregar
+        video.load();
+        
         const arSystem = sceneEl.systems['mindar-image-system'];
-        arSystem.start(); // Inicia a busca pela câmera
+        
+        // Tenta iniciar o sistema de RA
+        arSystem.start(); 
+
+        // Se em 5 segundos a tela azul não sumir, vamos forçar o som
+        setTimeout(() => {
+            if (video.paused) {
+                video.play().catch(e => console.log("Erro ao tocar som forçado"));
+            }
+        }, 5000);
     });
 
-    // 2. ESTE É O SEGREDO: Só dá o play quando a tela azul sumir e a câmera aparecer
-    sceneEl.addEventListener("arReady", (event) => {
-        console.log("Câmera pronta! Agora sim o vídeo pode começar.");
-        video.play(); // O som e o vídeo começam agora, sem atraso visual
-    });
-
-    // 3. Caso o alvo seja encontrado, garante que o vídeo esteja rodando
-    sceneEl.addEventListener("targetFound", event => {
-        console.log("Alvo encontrado!");
+    sceneEl.addEventListener("arReady", () => {
+        console.log("Câmera pronta!");
         video.play();
     });
 
-    // 4. Caso o alvo seja perdido, o vídeo pausa (opcional, ajuda na imersão)
-    sceneEl.addEventListener("targetLost", event => {
-        console.log("Alvo perdido");
-        video.pause();
-    });
-
     sceneEl.addEventListener("arError", (event) => {
-        alert("Erro ao abrir a câmera. Verifique as permissões no cadeado do navegador.");
+        alert("O arquivo targets.mind não foi carregado corretamente ou a câmera foi negada.");
     });
 </script>
 </body>
