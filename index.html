@@ -1,67 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta charset="UTF-8">
+    <title>Experiência RA - Kelly Silva</title>
+    
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
-   <style>
-    body { margin: 0; overflow: hidden; background: #000; }
-    /* Isso impede que o A-Frame crie botões de VR que quebram a tela */
-    .a-enter-vr, .a-enter-ar { display: none !important; }
-    
-    #overlay { 
-        position: absolute; z-index: 1000; top: 0; left: 0; width: 100%; height: 100%; 
-        display: flex; align-items: center; justify-content: center; background: #000; 
-    }
-    button { 
-        padding: 20px 40px; font-size: 20px; cursor: pointer; border-radius: 50px; 
-        border: 2px solid #fff; background: transparent; color: #fff; font-weight: bold;
-    }
-</style>
+
+    <style>
+        /* Reset de tela para evitar divisões e barras de rolagem */
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%; 
+            height: 100%; 
+            overflow: hidden; 
+            background-color: #000; 
+        }
+
+        /* Bloqueio total do modo VR/Papelão que divide a tela */
+        .a-enter-vr, .a-enter-ar, .a-orientation-modal, .a-loader-title { 
+            display: none !important; 
+        }
+
+        /* Força a câmera a ocupar o fundo inteiro sem distorção */
+        canvas.a-canvas { 
+            width: 100% !important; 
+            height: 100% !important; 
+            top: 0; 
+            left: 0; 
+            position: absolute; 
+        }
+
+        /* Botão de Início */
+        #overlay { 
+            position: absolute; 
+            z-index: 9999; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            background: rgba(0,0,0,0.8); 
+        }
+
+        button { 
+            padding: 20px 40px; 
+            font-size: 18px; 
+            cursor: pointer; 
+            border-radius: 50px; 
+            border: 2px solid #fff; 
+            background: transparent; 
+            color: #fff; 
+            font-weight: bold; 
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:active {
+            background: #fff;
+            color: #000;
+        }
+    </style>
 </head>
 <body>
-    <div id="overlay"><button id="btn">INICIAR EXPERIÊNCIA</button></div>
 
-  <a-scene 
-    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: yes;" 
-    embedded
-    renderer="colorManagement: true, physicallyCorrectLights"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
+    <div id="overlay">
+        <button id="btn-start">Iniciar Experiência</button>
+    </div>
+
+    <a-scene 
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: yes;" 
+        embedded 
+        vr-mode-ui="enabled: false" 
+        device-orientation-permission-ui="enabled: false"
+        color-space="sRGB" 
+        renderer="colorManagement: true, physicallyCorrectLights">
         
-        <a-assets>
-            <video id="vid" src="https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4" 
-                   preload="auto" loop="true" crossorigin="anonymous" playsinline></video>
+        <a-assets timeout="30000">
+            <video id="vid" 
+                   src="https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4" 
+                   preload="auto" 
+                   loop="true" 
+                   crossorigin="anonymous" 
+                   playsinline 
+                   webkit-playsinline>
+            </video>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <a-entity mindar-image-target="targetIndex: 0">
-    <a-video src="#vid" width="1" height="1" position="0 0 0.01"></a-video>
-</a-entity>
+        <a-entity mindar-image-target="targetIndex: 0">
+            <a-video src="#vid" 
+                     width="1" 
+                     height="1" 
+                     position="0 0 0.01" 
+                     rotation="0 0 0">
+            </a-video>
+        </a-entity>
+
     </a-scene>
 
     <script>
-        const btn = document.getElementById('btn');
+        const btn = document.getElementById('btn-start');
         const sceneEl = document.querySelector('a-scene');
         const video = document.getElementById('vid');
 
         btn.addEventListener('click', () => {
+            // Esconde o botão
             document.getElementById('overlay').style.display = 'none';
             
-            // Inicia o sistema de imagem e a câmera apenas no clique
+            // Inicia o motor de RA (pede a câmera)
             const arSystem = sceneEl.systems['mindar-image-system'];
             arSystem.start(); 
 
-            // O vídeo só toca após a câmera iniciar
+            // Dá o play no vídeo (com som)
             video.play();
         });
 
-        // Garante que se a câmera falhar, o som não fique tocando sozinho no fundo
-        sceneEl.addEventListener('arError', () => {
-            video.pause();
-            alert("Erro ao acessar a câmera. Verifique as permissões.");
+        // Caso haja erro na câmera, avisa o usuário
+        sceneEl.addEventListener('arError', (event) => {
+            alert("Erro ao acessar a câmera. Verifique se deu permissão no navegador.");
         });
     </script>
 </body>
