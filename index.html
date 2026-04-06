@@ -72,13 +72,13 @@
         <button id="btn-start">Iniciar Experiência</button>
     </div>
 
-    <a-scene 
-        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: yes;" 
-        embedded 
-        vr-mode-ui="enabled: false" 
-        device-orientation-permission-ui="enabled: false"
-        color-space="sRGB" 
-        renderer="colorManagement: true, physicallyCorrectLights">
+   <a-scene 
+    mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiScanning: yes; filterMinCF:0.0001; filterBeta: 0.001;" 
+    embedded 
+    vr-mode-ui="enabled: false" 
+    device-orientation-permission-ui="enabled: false"
+    color-space="sRGB" 
+    renderer="colorManagement: true, physicallyCorrectLights">
         
         <a-assets timeout="30000">
             <video id="vid" 
@@ -104,27 +104,33 @@
 
     </a-scene>
 
-    <script>
-        const btn = document.getElementById('btn-start');
-        const sceneEl = document.querySelector('a-scene');
-        const video = document.getElementById('vid');
+   <script>
+    const btn = document.getElementById('btn-start');
+    const sceneEl = document.querySelector('a-scene');
+    const video = document.getElementById('vid');
+    const overlay = document.getElementById('overlay');
 
-        btn.addEventListener('click', () => {
-            // Esconde o botão
-            document.getElementById('overlay').style.display = 'none';
-            
-            // Inicia o motor de RA (pede a câmera)
-            const arSystem = sceneEl.systems['mindar-image-system'];
-            arSystem.start(); 
+    btn.addEventListener('click', () => {
+        // Remove o fundo preto completamente da tela
+        overlay.style.display = 'none';
+        overlay.remove(); 
 
-            // Dá o play no vídeo (com som)
-            video.play();
-        });
+        // Inicia o sistema
+        const arSystem = sceneEl.systems['mindar-image-system'];
+        arSystem.start(); 
 
-        // Caso haja erro na câmera, avisa o usuário
-        sceneEl.addEventListener('arError', (event) => {
-            alert("Erro ao acessar a câmera. Verifique se deu permissão no navegador.");
-        });
-    </script>
+        // Toca o vídeo
+        video.play();
+    });
+
+    // Se houver erro no carregamento do arquivo .mind, ele avisa aqui
+    sceneEl.addEventListener("arReady", (event) => {
+       console.log("MindAR está pronto e funcionando!");
+    });
+
+    sceneEl.addEventListener("arError", (event) => {
+       alert("Erro: O arquivo .mind não foi encontrado ou a câmera foi negada.");
+    });
+</script>
 </body>
 </html>
