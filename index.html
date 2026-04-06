@@ -104,32 +104,37 @@
 
     </a-scene>
 
-   <script>
+<script>
     const btn = document.getElementById('btn-start');
     const sceneEl = document.querySelector('a-scene');
     const video = document.getElementById('vid');
     const overlay = document.getElementById('overlay');
 
     btn.addEventListener('click', () => {
-        // Remove o fundo preto completamente da tela
+        // 1. Remove o fundo preto imediatamente
         overlay.style.display = 'none';
         overlay.remove(); 
 
-        // Inicia o sistema
+        // 2. Tenta iniciar o vídeo primeiro (silencioso para não bloquear)
+        video.play().catch(e => console.log("Aguardando interação para som"));
+
+        // 3. Força a inicialização do sistema de RA
         const arSystem = sceneEl.systems['mindar-image-system'];
-        arSystem.start(); 
-
-        // Toca o vídeo
-        video.play();
+        
+        // Pequeno atraso de 300ms para garantir que o navegador processou o clique
+        setTimeout(() => {
+            arSystem.start(); 
+        }, 300);
     });
 
-    // Se houver erro no carregamento do arquivo .mind, ele avisa aqui
-    sceneEl.addEventListener("arReady", (event) => {
-       console.log("MindAR está pronto e funcionando!");
-    });
-
+    // Verificador de Erros em Tempo Real
     sceneEl.addEventListener("arError", (event) => {
-       alert("Erro: O arquivo .mind não foi encontrado ou a câmera foi negada.");
+        console.error("Erro de RA:", event);
+        alert("A câmera não abriu. Verifique se você deu 'Permitir' no cadeado lá no topo da página.");
+    });
+
+    sceneEl.addEventListener("arReady", () => {
+        console.log("Câmera carregada com sucesso!");
     });
 </script>
 </body>
