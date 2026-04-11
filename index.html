@@ -3,16 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Escaneie a imagem para abrir o vídeo</title>
-    <!-- TensorFlow.js + MobileNet para reconhecimento de imagens -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <title>Scan Image to Video</title>
+    <!-- TensorFlow.js CDNs CORRIGIDOS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -31,18 +27,8 @@
             backdrop-filter: blur(10px);
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
-        h1 {
-            color: white;
-            text-align: center;
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-        }
-        .sub {
-            color: #aaa;
-            text-align: center;
-            font-size: 0.85rem;
-            margin-bottom: 20px;
-        }
+        h1 { color: white; text-align: center; font-size: 1.5rem; margin-bottom: 8px; }
+        .sub { color: #aaa; text-align: center; font-size: 0.85rem; margin-bottom: 20px; }
         .video-wrapper {
             position: relative;
             background: #000;
@@ -58,12 +44,8 @@
             height: 100%;
             object-fit: cover;
         }
-        canvas {
-            z-index: 2;
-        }
-        video {
-            z-index: 1;
-        }
+        canvas { z-index: 2; }
+        video { z-index: 1; }
         .status {
             margin-top: 20px;
             padding: 15px;
@@ -72,18 +54,10 @@
             font-weight: bold;
             transition: all 0.3s;
         }
-        .status.scanning {
-            background: rgba(0,0,0,0.5);
-            color: #ffd700;
-        }
-        .status.matched {
-            background: rgba(46,204,113,0.3);
-            color: #2ecc71;
-        }
-        .status.waiting {
-            background: rgba(52,152,219,0.3);
-            color: #3498db;
-        }
+        .status.scanning { background: rgba(0,0,0,0.5); color: #ffd700; }
+        .status.matched { background: rgba(46,204,113,0.3); color: #2ecc71; }
+        .status.waiting { background: rgba(52,152,219,0.3); color: #3498db; }
+        .status.error { background: rgba(231,76,60,0.3); color: #e74c3c; }
         .similarity {
             margin-top: 12px;
             background: rgba(0,0,0,0.5);
@@ -120,25 +94,24 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        .btn-camera:hover {
-            background: #2980b9;
-            transform: scale(1.02);
-        }
-        .btn-camera:active {
-            transform: scale(0.98);
-        }
+        .btn-camera:hover { background: #2980b9; transform: scale(1.02); }
+        .btn-camera:active { transform: scale(0.98); }
+        .btn-camera:disabled { opacity: 0.5; cursor: not-allowed; }
         .instruction {
             color: #ccc;
             font-size: 0.75rem;
             text-align: center;
             margin-top: 16px;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .pulse {
-            animation: pulse 1s infinite;
+        .debug {
+            margin-top: 12px;
+            padding: 8px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 8px;
+            font-size: 0.7rem;
+            color: #888;
+            text-align: center;
+            word-break: break-all;
         }
     </style>
 </head>
@@ -152,8 +125,8 @@
         <canvas id="canvas"></canvas>
     </div>
 
-    <div class="status scanning" id="status">
-        🔍 Escaneando... aponte para a imagem
+    <div class="status waiting" id="status">
+        ⏳ Carregando modelo de IA...
     </div>
     <div class="similarity">
         Similaridade: <span id="similarity-value">0</span>%
@@ -162,112 +135,132 @@
         </div>
     </div>
 
-    <button class="btn-camera" id="startCameraBtn">📸 Iniciar Câmera</button>
+    <button class="btn-camera" id="startCameraBtn" disabled>📸 Iniciar Câmera</button>
     <div class="instruction">
         💡 Dica: Mantenha o celular parado por 1-2 segundos sobre a imagem.<br>
         O vídeo abrirá automaticamente quando a similaridade atingir 70%.
     </div>
+    <div class="debug" id="debug"></div>
 </div>
 
 <script>
     // ============================================
-    // 🔧 CONFIGURAÇÕES - VOCÊ PRECISA MODIFICAR AQUI!
+    // 🔧 CONFIGURAÇÕES - SEUS LINKS JÁ CONFIGURADOS!
     // ============================================
     
-    // URL do VÍDEO que será aberto quando a imagem for reconhecida
+    // URL do VÍDEO que será aberto (seu vídeo do Wix)
     const VIDEO_URL = "https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4";
     
-    // URL da IMAGEM DE REFERÊNCIA (o frame inicial que será comparado)
-    // Coloque uma imagem HOSPEDADA (pode ser no próprio Wix, Imgur, ou GitHub)
+    // URL da IMAGEM DE REFERÊNCIA (seu frame inicial do Wix)
     const TARGET_IMAGE_URL = "https://static.wixstatic.com/media/886022_cdf22739c43946babb0f7b02e640fee7~mv2.jpg";
     
-    // Limiar de similaridade (70% = 0.7). Quanto maior, mais difícil reconhecer
+    // Limiar de similaridade (70% = 0.7)
     const SIMILARITY_THRESHOLD = 0.70;
     
-    // Quantos segundos de estabilidade antes de abrir o vídeo
-    const STABILITY_SECONDS = 1.0;
-    
     // ============================================
-    // FIM DAS CONFIGURAÇÕES - NÃO MEXA DAQUI PRA BAIXO
+    // FIM DAS CONFIGURAÇÕES
     // ============================================
     
-    // Elementos da UI
+    // Elementos
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const statusDiv = document.getElementById('status');
     const similaritySpan = document.getElementById('similarity-value');
     const progressFill = document.getElementById('progress-fill');
     const startBtn = document.getElementById('startCameraBtn');
+    const debugDiv = document.getElementById('debug');
     
-    // Variáveis de controle
+    // Variáveis
     let model = null;
     let targetFeatures = null;
     let stream = null;
     let animationId = null;
-    let lastSimilarity = 0;
-    let stabilityTimer = null;
     let isVideoOpened = false;
     
-    // Função para carregar o modelo e a imagem alvo
+    function debugLog(msg) {
+        console.log(msg);
+        debugDiv.innerHTML = msg + "<br>" + debugDiv.innerHTML;
+        if (debugDiv.innerHTML.split("<br>").length > 5) {
+            debugDiv.innerHTML = debugDiv.innerHTML.split("<br>").slice(0, 4).join("<br>");
+        }
+    }
+    
+    // Verifica se TF está disponível
+    function checkTensorFlow() {
+        if (typeof tf === 'undefined') {
+            debugLog("❌ TensorFlow.js não carregou!");
+            statusDiv.innerHTML = "❌ Erro: TensorFlow.js não carregou. Verifique sua internet.";
+            statusDiv.className = "status error";
+            return false;
+        }
+        debugLog("✅ TensorFlow.js versão " + tf.version?.tf);
+        return true;
+    }
+    
+    // Carrega modelo e imagem alvo
     async function initModelAndTarget() {
         statusDiv.innerHTML = "🔄 Carregando modelo de IA...";
         statusDiv.className = "status waiting";
         
+        // Verifica TensorFlow
+        if (!checkTensorFlow()) return false;
+        
+        // Verifica mobilenet
+        if (typeof mobilenet === 'undefined') {
+            debugLog("❌ MobileNet não carregou!");
+            statusDiv.innerHTML = "❌ Erro: MobileNet não carregou. Verifique sua internet.";
+            statusDiv.className = "status error";
+            return false;
+        }
+        
         try {
-            // Carrega o MobileNet (modelo leve de reconhecimento)
+            debugLog("Carregando MobileNet...");
             model = await mobilenet.load();
-            console.log("✅ Modelo MobileNet carregado");
+            debugLog("✅ Modelo MobileNet carregado");
             
             statusDiv.innerHTML = "🖼️ Carregando imagem de referência...";
             
-            // Carrega a imagem alvo
+            // Carrega a imagem alvo com timeout
             const targetImg = new Image();
             targetImg.crossOrigin = "Anonymous";
             
-            await new Promise((resolve, reject) => {
-                targetImg.onload = resolve;
-                targetImg.onerror = () => reject(new Error("Falha ao carregar imagem alvo. Verifique a URL."));
+            const imgLoadPromise = new Promise((resolve, reject) => {
+                targetImg.onload = () => {
+                    debugLog("✅ Imagem de referência carregada: " + targetImg.width + "x" + targetImg.height);
+                    resolve();
+                };
+                targetImg.onerror = (e) => {
+                    debugLog("❌ Falha ao carregar imagem: " + TARGET_IMAGE_URL);
+                    reject(new Error("Falha ao carregar imagem alvo"));
+                };
                 targetImg.src = TARGET_IMAGE_URL;
+                
+                // Timeout de 10 segundos
+                setTimeout(() => reject(new Error("Timeout ao carregar imagem")), 10000);
             });
             
-            // Extrai as características (features) da imagem alvo
+            await imgLoadPromise;
+            
+            // Extrai features
             const targetTensor = tf.browser.fromPixels(targetImg);
             targetFeatures = await model.infer(targetTensor, true);
             targetTensor.dispose();
             
-            console.log("✅ Imagem de referência processada");
-            statusDiv.innerHTML = "📷 Clique em 'Iniciar Câmera' para começar";
+            debugLog("✅ Imagem de referência processada (features extraídas)");
+            statusDiv.innerHTML = "✅ Pronto! Clique em 'Iniciar Câmera'";
             statusDiv.className = "status waiting";
+            startBtn.disabled = false;
             return true;
+            
         } catch (error) {
-            console.error("Erro ao carregar modelo/imagem:", error);
-            statusDiv.innerHTML = "❌ Erro ao carregar: " + error.message + "<br>Verifique as URLs configuradas";
-            statusDiv.className = "status waiting";
+            debugLog("❌ Erro: " + error.message);
+            statusDiv.innerHTML = "❌ Erro: " + error.message;
+            statusDiv.className = "status error";
             return false;
         }
     }
     
-    // Função para comparar duas imagens usando MobileNet
-    async function compareImages(videoFrame) {
-        if (!model || !targetFeatures) return 0;
-        
-        try {
-            // Obtém features do frame da câmera
-            const frameFeatures = await model.infer(videoFrame, true);
-            
-            // Calcula similaridade por cosseno
-            const similarity = cosineSimilarity(targetFeatures, frameFeatures);
-            
-            frameFeatures.dispose();
-            
-            return similarity;
-        } catch (error) {
-            console.error("Erro na comparação:", error);
-            return 0;
-        }
-    }
-    
-    // Calcula similaridade entre dois vetores de features
+    // Similaridade por cosseno
     function cosineSimilarity(features1, features2) {
         const a = features1.dataSync();
         const b = features2.dataSync();
@@ -286,7 +279,22 @@
         return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
     
-    // Função principal do loop de escaneamento
+    // Compara imagens
+    async function compareImages(videoFrame) {
+        if (!model || !targetFeatures) return 0;
+        
+        try {
+            const frameFeatures = await model.infer(videoFrame, true);
+            const similarity = cosineSimilarity(targetFeatures, frameFeatures);
+            frameFeatures.dispose();
+            return similarity;
+        } catch (error) {
+            debugLog("Erro na comparação: " + error.message);
+            return 0;
+        }
+    }
+    
+    // Loop principal
     async function scanLoop() {
         if (!stream || !video.videoWidth || !video.videoHeight) {
             animationId = requestAnimationFrame(scanLoop);
@@ -297,22 +305,16 @@
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         
-        // Desenha o frame atual no canvas (para processamento)
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // Cria tensor a partir do canvas
         const frameTensor = tf.browser.fromPixels(canvas);
-        
-        // Compara com a imagem alvo
         const similarity = await compareImages(frameTensor);
         frameTensor.dispose();
         
-        // Atualiza UI com a similaridade
         const percent = Math.round(similarity * 100);
         similaritySpan.textContent = percent;
         progressFill.style.width = percent + "%";
         
-        // Altera cor da barra baseado na similaridade
         if (similarity >= SIMILARITY_THRESHOLD) {
             progressFill.style.background = "linear-gradient(90deg, #2ecc71, #27ae60)";
         } else if (similarity >= 0.4) {
@@ -321,48 +323,40 @@
             progressFill.style.background = "linear-gradient(90deg, #f39c12, #e74c3c)";
         }
         
-        // Verifica se atingiu o limiar e não abriu vídeo ainda
         if (similarity >= SIMILARITY_THRESHOLD && !isVideoOpened) {
-            if (statusDiv.innerText !== "✅ IMAGEM RECONHECIDA!") {
-                statusDiv.innerHTML = "✅ IMAGEM RECONHECIDA! Abrindo vídeo...";
-                statusDiv.className = "status matched";
-                
-                // Pequeno delay para feedback visual
-                setTimeout(() => {
-                    if (!isVideoOpened) {
-                        isVideoOpened = true;
-                        window.location.href = VIDEO_URL;
-                    }
-                }, 500);
-            }
-        } else if (similarity >= SIMILARITY_THRESHOLD - 0.1 && similarity < SIMILARITY_THRESHOLD) {
-            statusDiv.innerHTML = "🎯 Quase lá! Aproxime mais a câmera...";
+            statusDiv.innerHTML = "✅ IMAGEM RECONHECIDA! Abrindo vídeo...";
+            statusDiv.className = "status matched";
+            isVideoOpened = true;
+            
+            setTimeout(() => {
+                window.location.href = VIDEO_URL;
+            }, 500);
+        } else if (similarity >= SIMILARITY_THRESHOLD - 0.1) {
+            statusDiv.innerHTML = "🎯 Quase lá! " + percent + "%";
             statusDiv.className = "status scanning";
         } else {
-            statusDiv.innerHTML = "🔍 Escaneando... aponte para a imagem";
+            statusDiv.innerHTML = "🔍 Escaneando... " + percent + "%";
             statusDiv.className = "status scanning";
         }
         
-        // Continua o loop
         animationId = requestAnimationFrame(scanLoop);
     }
     
-    // Inicia a câmera
+    // Inicia câmera
     async function startCamera() {
         if (stream) {
-            // Já tem stream, para tudo e recomeça
-            stopCamera();
+            stream.getTracks().forEach(track => track.stop());
+            if (animationId) cancelAnimationFrame(animationId);
         }
         
         statusDiv.innerHTML = "🎥 Solicitando acesso à câmera...";
         
         try {
             stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" } // Tenta usar câmera traseira
+                video: { facingMode: "environment" } 
             });
             video.srcObject = stream;
             
-            // Aguarda o vídeo carregar
             await new Promise((resolve) => {
                 video.onloadedmetadata = () => {
                     video.play();
@@ -370,68 +364,31 @@
                 };
             });
             
-            statusDiv.innerHTML = "🔍 Escaneando... aponte para a imagem";
-            statusDiv.className = "status scanning";
+            statusDiv.innerHTML = "🔍 Escaneando...";
             startBtn.textContent = "🔄 Reiniciar Câmera";
-            
-            // Inicia o loop de escaneamento
-            if (animationId) cancelAnimationFrame(animationId);
             animationId = requestAnimationFrame(scanLoop);
             
         } catch (error) {
-            console.error("Erro ao acessar câmera:", error);
+            debugLog("Erro câmera: " + error.message);
             let errorMsg = "Não foi possível acessar a câmera.";
             if (error.name === "NotAllowedError") {
                 errorMsg = "Permissão negada. Clique no ícone de câmera na barra de endereço.";
             } else if (error.name === "NotFoundError") {
-                errorMsg = "Nenhuma câmera encontrada neste dispositivo.";
+                errorMsg = "Nenhuma câmera encontrada.";
             }
             statusDiv.innerHTML = "❌ " + errorMsg;
-            statusDiv.className = "status waiting";
+            statusDiv.className = "status error";
         }
     }
     
-    // Para a câmera e limpa
-    function stopCamera() {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            stream = null;
-        }
-        if (animationId) {
-            cancelAnimationFrame(animationId);
-            animationId = null;
-        }
-        video.srcObject = null;
-    }
+    startBtn.addEventListener('click', startCamera);
     
-    // Evento do botão
-    startBtn.addEventListener('click', () => {
-        if (isVideoOpened) {
-            // Se já abriu vídeo, recarrega a página
-            window.location.reload();
-        } else {
-            startCamera();
-        }
-    });
+    // Inicializa
+    initModelAndTarget();
     
-    // Inicialização: carrega modelo e imagem alvo
-    initModelAndTarget().then(success => {
-        if (!success) {
-            startBtn.disabled = true;
-            startBtn.style.opacity = "0.5";
-        } else {
-            startBtn.disabled = false;
-        }
-    });
-    
-    // Limpeza ao sair da página
     window.addEventListener('beforeunload', () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-        }
-        if (animationId) {
-            cancelAnimationFrame(animationId);
-        }
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        if (animationId) cancelAnimationFrame(animationId);
     });
 </script>
 </body>
