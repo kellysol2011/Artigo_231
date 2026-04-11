@@ -4,8 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Scan Image to Video</title>
-    <!-- TensorFlow.js CDNs CORRIGIDOS -->
+    <!-- TensorFlow.js FORÇANDO CPU (resolve erro de shader) -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script>
+        // 🔧 FORÇA USAR CPU EM VEZ DE GPU (resolve erro de shader)
+        tf.setBackend('cpu');
+        console.log("Backend atual:", tf.getBackend());
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -145,23 +150,15 @@
 
 <script>
     // ============================================
-    // 🔧 CONFIGURAÇÕES - SEUS LINKS JÁ CONFIGURADOS!
+    // 🔧 CONFIGURAÇÕES - SEUS LINKS
     // ============================================
     
-    // URL do VÍDEO que será aberto (seu vídeo do Wix)
     const VIDEO_URL = "https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4";
-    
-    // URL da IMAGEM DE REFERÊNCIA (seu frame inicial do Wix)
     const TARGET_IMAGE_URL = "https://static.wixstatic.com/media/886022_cdf22739c43946babb0f7b02e640fee7~mv2.jpg";
-    
-    // Limiar de similaridade (70% = 0.7)
-    const SIMILARITY_THRESHOLD = 0.50;
+    const SIMILARITY_THRESHOLD = 0.70;
     
     // ============================================
-    // FIM DAS CONFIGURAÇÕES
-    // ============================================
     
-    // Elementos
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const statusDiv = document.getElementById('status');
@@ -170,7 +167,6 @@
     const startBtn = document.getElementById('startCameraBtn');
     const debugDiv = document.getElementById('debug');
     
-    // Variáveis
     let model = null;
     let targetFeatures = null;
     let stream = null;
@@ -185,33 +181,11 @@
         }
     }
     
-    // Verifica se TF está disponível
-    function checkTensorFlow() {
-        if (typeof tf === 'undefined') {
-            debugLog("❌ TensorFlow.js não carregou!");
-            statusDiv.innerHTML = "❌ Erro: TensorFlow.js não carregou. Verifique sua internet.";
-            statusDiv.className = "status error";
-            return false;
-        }
-        debugLog("✅ TensorFlow.js versão " + tf.version?.tf);
-        return true;
-    }
-    
-    // Carrega modelo e imagem alvo
     async function initModelAndTarget() {
         statusDiv.innerHTML = "🔄 Carregando modelo de IA...";
         statusDiv.className = "status waiting";
         
-        // Verifica TensorFlow
-        if (!checkTensorFlow()) return false;
-        
-        // Verifica mobilenet
-        if (typeof mobilenet === 'undefined') {
-            debugLog("❌ MobileNet não carregou!");
-            statusDiv.innerHTML = "❌ Erro: MobileNet não carregou. Verifique sua internet.";
-            statusDiv.className = "status error";
-            return false;
-        }
+        debugLog("Backend atual: " + tf.getBackend());
         
         try {
             debugLog("Carregando MobileNet...");
@@ -220,33 +194,23 @@
             
             statusDiv.innerHTML = "🖼️ Carregando imagem de referência...";
             
-            // Carrega a imagem alvo com timeout
             const targetImg = new Image();
             targetImg.crossOrigin = "Anonymous";
             
-            const imgLoadPromise = new Promise((resolve, reject) => {
-                targetImg.onload = () => {
-                    debugLog("✅ Imagem de referência carregada: " + targetImg.width + "x" + targetImg.height);
-                    resolve();
-                };
-                targetImg.onerror = (e) => {
-                    debugLog("❌ Falha ao carregar imagem: " + TARGET_IMAGE_URL);
-                    reject(new Error("Falha ao carregar imagem alvo"));
-                };
+            await new Promise((resolve, reject) => {
+                targetImg.onload = resolve;
+                targetImg.onerror = () => reject(new Error("Falha ao carregar imagem"));
                 targetImg.src = TARGET_IMAGE_URL;
-                
-                // Timeout de 10 segundos
-                setTimeout(() => reject(new Error("Timeout ao carregar imagem")), 10000);
+                setTimeout(() => reject(new Error("Timeout")), 10000);
             });
             
-            await imgLoadPromise;
+            debugLog("✅ Imagem carregada: " + targetImg.width + "x" + targetImg.height);
             
-            // Extrai features
             const targetTensor = tf.browser.fromPixels(targetImg);
             targetFeatures = await model.infer(targetTensor, true);
             targetTensor.dispose();
             
-            debugLog("✅ Imagem de referência processada (features extraídas)");
+            debugLog("✅ Imagem processada");
             statusDiv.innerHTML = "✅ Pronto! Clique em 'Iniciar Câmera'";
             statusDiv.className = "status waiting";
             startBtn.disabled = false;
@@ -260,41 +224,32 @@
         }
     }
     
-    // Similaridade por cosseno
     function cosineSimilarity(features1, features2) {
         const a = features1.dataSync();
         const b = features2.dataSync();
         
-        let dotProduct = 0;
-        let normA = 0;
-        let normB = 0;
-        
+        let dotProduct = 0, normA = 0, normB = 0;
         for (let i = 0; i < a.length; i++) {
             dotProduct += a[i] * b[i];
             normA += a[i] * a[i];
             normB += b[i] * b[i];
         }
-        
         if (normA === 0 || normB === 0) return 0;
         return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
     
-    // Compara imagens
     async function compareImages(videoFrame) {
         if (!model || !targetFeatures) return 0;
-        
         try {
             const frameFeatures = await model.infer(videoFrame, true);
             const similarity = cosineSimilarity(targetFeatures, frameFeatures);
             frameFeatures.dispose();
             return similarity;
         } catch (error) {
-            debugLog("Erro na comparação: " + error.message);
             return 0;
         }
     }
     
-    // Loop principal
     async function scanLoop() {
         if (!stream || !video.videoWidth || !video.videoHeight) {
             animationId = requestAnimationFrame(scanLoop);
@@ -304,7 +259,6 @@
         const ctx = canvas.getContext('2d');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
         const frameTensor = tf.browser.fromPixels(canvas);
@@ -315,34 +269,20 @@
         similaritySpan.textContent = percent;
         progressFill.style.width = percent + "%";
         
-        if (similarity >= SIMILARITY_THRESHOLD) {
-            progressFill.style.background = "linear-gradient(90deg, #2ecc71, #27ae60)";
-        } else if (similarity >= 0.4) {
-            progressFill.style.background = "linear-gradient(90deg, #f39c12, #e67e22)";
-        } else {
-            progressFill.style.background = "linear-gradient(90deg, #f39c12, #e74c3c)";
-        }
-        
         if (similarity >= SIMILARITY_THRESHOLD && !isVideoOpened) {
             statusDiv.innerHTML = "✅ IMAGEM RECONHECIDA! Abrindo vídeo...";
             statusDiv.className = "status matched";
             isVideoOpened = true;
-            
-            setTimeout(() => {
-                window.location.href = VIDEO_URL;
-            }, 500);
+            setTimeout(() => { window.location.href = VIDEO_URL; }, 500);
         } else if (similarity >= SIMILARITY_THRESHOLD - 0.1) {
             statusDiv.innerHTML = "🎯 Quase lá! " + percent + "%";
-            statusDiv.className = "status scanning";
         } else {
             statusDiv.innerHTML = "🔍 Escaneando... " + percent + "%";
-            statusDiv.className = "status scanning";
         }
         
         animationId = requestAnimationFrame(scanLoop);
     }
     
-    // Inicia câmera
     async function startCamera() {
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
@@ -358,10 +298,7 @@
             video.srcObject = stream;
             
             await new Promise((resolve) => {
-                video.onloadedmetadata = () => {
-                    video.play();
-                    resolve();
-                };
+                video.onloadedmetadata = () => { video.play(); resolve(); };
             });
             
             statusDiv.innerHTML = "🔍 Escaneando...";
@@ -370,20 +307,12 @@
             
         } catch (error) {
             debugLog("Erro câmera: " + error.message);
-            let errorMsg = "Não foi possível acessar a câmera.";
-            if (error.name === "NotAllowedError") {
-                errorMsg = "Permissão negada. Clique no ícone de câmera na barra de endereço.";
-            } else if (error.name === "NotFoundError") {
-                errorMsg = "Nenhuma câmera encontrada.";
-            }
-            statusDiv.innerHTML = "❌ " + errorMsg;
+            statusDiv.innerHTML = "❌ Erro ao acessar câmera";
             statusDiv.className = "status error";
         }
     }
     
     startBtn.addEventListener('click', startCamera);
-    
-    // Inicializa
     initModelAndTarget();
     
     window.addEventListener('beforeunload', () => {
