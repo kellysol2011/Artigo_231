@@ -1,59 +1,34 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta charset="UTF-8">
-    <title>RA Kelly - Solução Unificada</title>
-    
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-
     <style>
-        /* TRAVA 1: Impede qualquer tentativa de scroll ou divisão visual */
-        body { margin: 0; overflow: hidden; background: #000; touch-action: none; }
-        
-        /* TRAVA 2: Remove fisicamente os botões de óculos e o modo VR */
-        .a-enter-vr, .a-enter-ar, .a-orientation-modal, .a-loader-title { 
-            display: none !important; 
-        }
-
-        /* Centraliza o Scanner do MindAR na tela cheia */
-        .mindar-ui-scanning { 
-            z-index: 500;
-        }
-
+        body { margin: 0; overflow: hidden; background: #000; }
+        /* Esconde botões de VR que dividem a tela */
+        .a-enter-vr, .a-enter-ar, .a-orientation-modal { display: none !important; }
         #overlay { 
-            position: absolute; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%; 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            background: #000; color: white; font-family: sans-serif;
+            position: absolute; z-index: 999; top: 0; left: 0; width: 100%; height: 100%; 
+            display: flex; align-items: center; justify-content: center; background: #000; 
         }
-        
         button { 
-            padding: 20px 40px; font-size: 18px; cursor: pointer; border-radius: 50px; 
-            border: 2px solid #fff; background: transparent; color: #fff; font-weight: bold; 
+            padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 30px; 
+            border: 2px solid #fff; background: #000; color: #fff; font-weight: bold; 
         }
     </style>
 </head>
 <body>
-
-    <div id="overlay">
-        <button id="btn-start">INICIAR EXPERIÊNCIA</button>
-    </div>
+    <div id="overlay"><button id="btn">INICIAR</button></div>
 
     <a-scene 
         mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiLoading: no; uiScanning: yes;" 
-        embedded 
-        vr-mode-ui="enabled: false" 
-        device-orientation-permission-ui="enabled: false"
-        loading-screen="enabled: false"
-        color-space="sRGB" 
-        renderer="colorManagement: true, physicallyCorrectLights">
+        embedded vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
         
         <a-assets>
-            <video id="vid" 
-                   src="https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4" 
-                   preload="auto" loop="true" crossorigin="anonymous" playsinline webkit-playsinline>
-            </video>
+            <video id="vid" src="https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4" 
+                   preload="auto" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -64,26 +39,31 @@
     </a-scene>
 
     <script>
-        const btn = document.getElementById('btn-start');
-        const overlay = document.getElementById('overlay');
-        const sceneEl = document.querySelector('a-scene');
+        const btn = document.getElementById('btn');
         const video = document.getElementById('vid');
+        const sceneEl = document.querySelector('a-scene');
+
+        // Garante que o vídeo esteja mudo e pausado no início
+        video.pause();
+        video.muted = true;
 
         btn.addEventListener('click', () => {
-            // Destrava áudio/vídeo
-            video.play().then(() => video.pause());
-
-            // Inicia MindAR
+            document.getElementById('overlay').style.display = 'none';
+            
+            // Inicia o motor de RA
             const arSystem = sceneEl.systems['mindar-image-system'];
             arSystem.start(); 
-            
-            // Remove o overlay imediatamente para liberar a renderização da câmera única
-            overlay.style.display = "none";
         });
 
+        // O SOM SÓ É LIBERADO AQUI
         sceneEl.addEventListener("arReady", () => {
-            video.play();
+            video.muted = false; // Tira o mudo
+            video.play();       // Dá o play real
         });
+
+        // Pausa se perder a imagem, volta se achar (ajuda a não perder o fio da meada)
+        sceneEl.addEventListener("targetFound", () => { video.play(); });
+        sceneEl.addEventListener("targetLost", () => { video.pause(); });
     </script>
 </body>
 </html>
