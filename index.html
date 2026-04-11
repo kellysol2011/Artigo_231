@@ -123,7 +123,7 @@
 <body>
 <div class="container">
     <h1>📷 Escaneie a imagem</h1>
-    <div class="sub">Aponte a câmera para o frame inicial do vídeo</div>
+    <div class="sub">Aponte a câmera para a imagem</div>
 
     <div class="video-wrapper">
         <video id="video" autoplay playsinline muted></video>
@@ -143,7 +143,7 @@
     <button class="btn-camera" id="startCameraBtn" disabled>📸 Iniciar Câmera</button>
     <div class="instruction">
         💡 Dica: Mantenha o celular parado por 1-2 segundos sobre a imagem.<br>
-        O vídeo abrirá automaticamente quando a similaridade atingir 70%.
+        O vídeo abrirá automaticamente quando a similaridade atingir 50%.
     </div>
     <div class="debug" id="debug"></div>
 </div>
@@ -155,6 +155,8 @@
     
     const VIDEO_URL = "https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4";
     const TARGET_IMAGE_URL = "https://static.wixstatic.com/media/886022_cdf22739c43946babb0f7b02e640fee7~mv2.jpg";
+    
+    // 🎯 SIMILARIDADE ALTERADA PARA 50% (0.50)
     const SIMILARITY_THRESHOLD = 0.50;
     
     // ============================================
@@ -269,15 +271,24 @@
         similaritySpan.textContent = percent;
         progressFill.style.width = percent + "%";
         
+        // Altera a cor da barra baseado no limiar de 50%
+        if (similarity >= SIMILARITY_THRESHOLD) {
+            progressFill.style.background = "linear-gradient(90deg, #2ecc71, #27ae60)";
+        } else if (similarity >= 0.30) {
+            progressFill.style.background = "linear-gradient(90deg, #f39c12, #e67e22)";
+        } else {
+            progressFill.style.background = "linear-gradient(90deg, #f39c12, #e74c3c)";
+        }
+        
         if (similarity >= SIMILARITY_THRESHOLD && !isVideoOpened) {
             statusDiv.innerHTML = "✅ IMAGEM RECONHECIDA! Abrindo vídeo...";
             statusDiv.className = "status matched";
             isVideoOpened = true;
             setTimeout(() => { window.location.href = VIDEO_URL; }, 500);
         } else if (similarity >= SIMILARITY_THRESHOLD - 0.1) {
-            statusDiv.innerHTML = "🎯 Quase lá! " + percent + "%";
+            statusDiv.innerHTML = "🎯 Quase lá! " + percent + "% (meta: 50%)";
         } else {
-            statusDiv.innerHTML = "🔍 Escaneando... " + percent + "%";
+            statusDiv.innerHTML = "🔍 Escaneando... " + percent + "% (precisa: 50%)";
         }
         
         animationId = requestAnimationFrame(scanLoop);
@@ -301,7 +312,7 @@
                 video.onloadedmetadata = () => { video.play(); resolve(); };
             });
             
-            statusDiv.innerHTML = "🔍 Escaneando...";
+            statusDiv.innerHTML = "🔍 Escaneando... (meta: 50%)";
             startBtn.textContent = "🔄 Reiniciar Câmera";
             animationId = requestAnimationFrame(scanLoop);
             
