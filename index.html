@@ -3,36 +3,45 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta charset="UTF-8">
-    <title>RA Kelly Silva</title>
+    <title>RA Kelly Silva - Solução Final</title>
     
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.5/dist/mindar-image-aframe.prod.js"></script>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        /* Impede qualquer divisão de tela ou rolagem */
+        body { margin: 0; overflow: hidden; background: #000; touch-action: none; }
         
-        /* Mata qualquer tentativa de dividir a tela ou mostrar ícones de óculos */
-        .a-enter-vr, .a-enter-ar, .a-orientation-modal { display: none !important; }
-        
+        /* Mata o modo VR e ícones de óculos que dividem a tela */
+        .a-enter-vr, .a-enter-ar, .a-orientation-modal, .a-loader-title { 
+            display: none !important; 
+        }
+
+        /* Camada de Início */
         #overlay { 
-            position: absolute; z-index: 1000; top: 0; left: 0; width: 100%; height: 100%; 
-            display: flex; align-items: center; justify-content: center; background: #000; 
+            position: absolute; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            background: #000; color: white; font-family: sans-serif;
         }
         
         button { 
             padding: 20px 40px; font-size: 18px; cursor: pointer; border-radius: 50px; 
             border: 2px solid #fff; background: transparent; color: #fff; font-weight: bold; 
+            text-transform: uppercase;
         }
+
+        #msg { margin-top: 20px; font-size: 14px; color: #888; }
     </style>
 </head>
 <body>
 
     <div id="overlay">
         <button id="btn-start">INICIAR EXPERIÊNCIA</button>
+        <div id="msg">Aguardando interação...</div>
     </div>
 
     <a-scene 
-        mindar-image="imageTargetSrc: targets.mind; autoStart: false;" 
+        mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiLoading: no; uiScanning: yes;" 
         embedded 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false"
@@ -55,30 +64,34 @@
 
     <script>
         const btn = document.getElementById('btn-start');
+        const overlay = document.getElementById('overlay');
+        const msg = document.getElementById('msg');
         const sceneEl = document.querySelector('a-scene');
         const video = document.getElementById('vid');
 
         btn.addEventListener('click', () => {
-            // Esconde o botão e o fundo preto
-            document.getElementById('overlay').style.display = "none";
+            msg.innerText = "Carregando câmera...";
             
-            // Inicia o sistema de RA
+            // Destrava o vídeo mudo primeiro (padrão de segurança mobile)
+            video.play().then(() => {
+                video.pause();
+            });
+
+            // Força a inicialização do MindAR
             const arSystem = sceneEl.systems['mindar-image-system'];
             arSystem.start(); 
-            
-            // Tenta dar o play no vídeo (ele começará quando a RA estiver pronta)
-            video.play().catch(() => {
-                console.log("Aguardando permissão de áudio...");
-            });
         });
 
-        // Garante que o vídeo toque e a tela não divida após carregar
+        // Quando a câmera abre de fato
         sceneEl.addEventListener("arReady", () => {
-            console.log("Câmera carregada!");
+            overlay.style.display = "none";
+            video.play(); // O som começa aqui
         });
 
-        sceneEl.addEventListener("arError", () => {
-            alert("Erro ao acessar a câmera. Verifique as permissões.");
+        // Se der erro de permissão ou arquivo
+        sceneEl.addEventListener("arError", (e) => {
+            msg.innerText = "Erro ao acessar câmera. Verifique as permissões.";
+            console.error(e);
         });
     </script>
 </body>
