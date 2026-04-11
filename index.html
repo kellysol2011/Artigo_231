@@ -3,44 +3,45 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta charset="UTF-8">
-    <title>RA Teste Final</title>
+    <title>RA Kelly - Final</title>
     
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-        .a-enter-vr, .a-enter-ar { display: none !important; }
+        /* Esconde elementos que podem travar a tela no celular */
+        .a-enter-vr, .a-enter-ar, .mindar-ui-loading, .mindar-ui-scanning { display: none !important; }
         
         #overlay { 
             position: absolute; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%; 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; 
+            display: flex; align-items: center; justify-content: center; background: #000; 
         }
         
         button { 
             padding: 20px 40px; font-size: 18px; cursor: pointer; border-radius: 50px; 
             border: 2px solid #fff; background: transparent; color: #fff; font-weight: bold; 
         }
-
-        #status { color: #555; margin-top: 20px; font-size: 14px; }
     </style>
 </head>
 <body>
     <div id="overlay">
-        <button id="btn">INICIAR EXPERIÊNCIA</button>
-        <div id="status">Aguardando interação...</div>
+        <button id="btn-start">INICIAR EXPERIÊNCIA</button>
     </div>
 
     <a-scene 
-        mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiScanning: yes;" 
+        mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiScanning: no; uiLoading: no;" 
         embedded 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false"
+        color-space="sRGB" 
         renderer="colorManagement: true, physicallyCorrectLights">
         
         <a-assets>
-            <video id="vid" src="https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4" 
-                   preload="auto" loop crossorigin="anonymous" playsinline></video>
+            <video id="vid" 
+                   src="https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4" 
+                   preload="auto" loop="true" crossorigin="anonymous" playsinline webkit-playsinline>
+            </video>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -51,49 +52,34 @@
     </a-scene>
 
     <script>
-        const btn = document.getElementById('btn');
-        const status = document.getElementById('status');
-        const video = document.getElementById('vid');
+        const btn = document.getElementById('btn-start');
         const sceneEl = document.querySelector('a-scene');
+        const video = document.getElementById('vid');
 
         btn.addEventListener('click', () => {
-            status.innerText = "Solicitando câmera...";
+            console.log("Iniciando...");
             
-            // Tenta forçar o vídeo a carregar primeiro em modo mudo para destravar o navegador
-            video.muted = true;
+            // 1. Tenta destravar o vídeo (necessário para iOS e Android)
             video.play().then(() => {
-                video.pause();
-                video.muted = false;
-            });
+                video.pause(); // Destrava mas não toca ainda
+            }).catch(e => console.log("Vídeo aguardando RA"));
 
-            // Inicia o motor de RA
-            try {
-                const arSystem = sceneEl.systems['mindar-image-system'];
-                arSystem.start(); 
-                status.innerText = "Sistema iniciado. Verifique se o navegador pediu permissão.";
-                
-                // Remove o overlay após um curto delay para não travar a renderização
-                setTimeout(() => {
-                    document.getElementById('overlay').style.background = "transparent";
-                    btn.style.display = 'none';
-                }, 500);
+            // 2. Inicia a RA
+            const arSystem = sceneEl.systems['mindar-image-system'];
+            arSystem.start(); 
 
-            } catch (err) {
-                status.innerText = "Erro ao carregar MindAR: " + err.message;
-                console.error(err);
-            }
+            // 3. Esconde o fundo preto para mostrar a câmera
+            document.getElementById('overlay').style.display = "none";
         });
 
-        // Eventos de Diagnóstico
+        // Só dá o play real no som/vídeo quando o sistema confirmar que a câmera abriu
         sceneEl.addEventListener("arReady", () => {
-            status.innerText = "Câmera pronta! Aponte para a obra.";
-            document.getElementById('overlay').style.display = "none";
+            console.log("Câmera OK");
             video.play();
         });
 
         sceneEl.addEventListener("arError", (e) => {
-            status.innerText = "Erro de RA: Verifique se o arquivo targets.mind existe.";
-            alert("A câmera não pôde ser iniciada.");
+            alert("Erro ao acessar câmera. Tente recarregar a página.");
         });
     </script>
 </body>
