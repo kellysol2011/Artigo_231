@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Scanner - Template Matching para Traços Finos</title>
+    <title>Scanner de Imagem - Versão Local</title>
     <style>
         * {
             margin: 0;
@@ -146,6 +146,24 @@
             padding: 8px;
         }
         
+        .upload-area {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            border: 1px dashed #aaa;
+        }
+        
+        .upload-area input {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        
         .preview-container {
             margin-top: 10px;
             display: flex;
@@ -154,10 +172,11 @@
         }
         
         .preview-container canvas {
-            width: 80px;
-            height: 80px;
+            width: 60px;
+            height: 60px;
             border-radius: 8px;
             border: 2px solid #555;
+            background: white;
         }
     </style>
 </head>
@@ -180,20 +199,24 @@
         </div>
         
         <div class="status" id="status">
-            ⏳ Carregando imagem de referência...
+            ⏳ Selecione a imagem de referência
+        </div>
+        
+        <div class="upload-area">
+            <p style="color:white; font-size:0.7rem; margin-bottom:8px;">📁 Selecione a imagem do frame inicial:</p>
+            <input type="file" id="imageUpload" accept="image/jpeg, image/png, image/jpg">
         </div>
         
         <div class="preview-container">
-            <canvas id="targetPreview" width="80" height="80" style="background:#333;"></canvas>
-            <canvas id="framePreview" width="80" height="80" style="background:#333;"></canvas>
+            <canvas id="targetPreview" width="60" height="60" style="background:#fff;"></canvas>
+            <canvas id="framePreview" width="60" height="60" style="background:#fff;"></canvas>
         </div>
         
         <div class="instruction">
-            💡 DICAS IMPORTANTES:<br>
-            • Posicione a câmera BEM PRÓXIMA à imagem<br>
-            • Mantenha o celular PARADO por 2 segundos<br>
-            • A imagem precisa estar BEM ILUMINADA<br>
-            • Centralize os traços na tela
+            💡 COMO USAR:<br>
+            1. Clique em "Selecionar arquivo" e escolha a imagem do frame inicial<br>
+            2. Clique em "INICIAR CÂMERA"<br>
+            3. Aponte a câmera para a imagem impressa
         </div>
         
         <div class="permission-hint" id="permissionHint">
@@ -209,27 +232,27 @@
         // ============================================
         
         const VIDEO_URL = "https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4";
-        const TARGET_IMAGE_URL = "https://static.wixstatic.com/media/886022_cdf22739c43946babb0f7b02e640fee7~mv2.jpg";
         
-        // Limiar bem baixo para traços finos (25%)
-        const SIMILARITY_THRESHOLD = 0.25;
+        // Limiar de detecção (30%)
+        const SIMILARITY_THRESHOLD = 0.30;
         
         // ============================================
         
         const video = document.getElementById('video');
         const startBtn = document.getElementById('startCameraBtn');
         const statusDiv = document.getElementById('status');
-        const similaritySpan = document.getElementById('similiarity-value');
+        const similaritySpan = document.getElementById('similarity-value');
         const progressFill = document.getElementById('progress-fill');
         const permissionHint = document.getElementById('permissionHint');
         const debugDiv = document.getElementById('debug');
         const targetPreview = document.getElementById('targetPreview');
         const framePreview = document.getElementById('framePreview');
+        const imageUpload = document.getElementById('imageUpload');
         
         let stream = null;
         let scanInterval = null;
-        let targetTemplate = null;  // Armazena os dados da imagem alvo
-        let targetWidth = 0, targetHeight = 0;
+        let targetTemplate = null;
+        let targetWidth = 100, targetHeight = 100;
         let isVideoOpened = false;
         let lastSimilarities = [];
         
@@ -241,55 +264,80 @@
             }
         }
         
-        // Converte imagem para escala de cinza e aumenta contraste (essencial para traços finos)
-        function preprocessImage(ctx, width, height, enhanceContrast = true) {
+        // Processa imagem (aumenta contraste, destaca traços)
+        function preprocessImage(ctx, width, height) {
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
             
-            // Converte para escala de cinza e calcula histograma
-            const gray = new Uint8Array(width * height);
-            let min = 255, max = 0;
-            
+            // Converte para escala de cinza e inverte (fundo branco vira preto, traço preto vira branco)
             for (let i = 0; i < width * height; i++) {
                 const r = data[i*4];
                 const g = data[i*4+1];
                 const b = data[i*4+2];
-                let val = 0.299 * r + 0.587 * g + 0.114 * b;
+                let gray = 0.299 * r + 0.587 * g + 0.114 * b;
                 
-                // Inverte se fundo for claro (traços escuros em fundo claro)
-                if (val > 200) val = 255 - val;
+                // Inverte para destacar traços
+                gray = 255 - gray;
                 
-                gray[i] = val;
-                if (val < min) min = val;
-                if (val > max) max = val;
-            }
-            
-            // Equalização de histograma (aumenta contraste dos traços)
-            if (enhanceContrast && max > min) {
-                for (let i = 0; i < width * height; i++) {
-                    let val = gray[i];
-                    val = ((val - min) / (max - min)) * 255;
-                    gray[i] = Math.min(255, Math.max(0, val));
-                }
-            }
-            
-            // Aplica limiarização para destacar apenas os traços
-            const threshold = 120;
-            for (let i = 0; i < width * height; i++) {
-                const val = gray[i] > threshold ? 255 : 0;
-                data[i*4] = val;
-                data[i*4+1] = val;
-                data[i*4+2] = val;
+                // Aumenta contraste
+                if (gray > 200) gray = 255;
+                else if (gray < 50) gray = 0;
+                
+                data[i*4] = gray;
+                data[i*4+1] = gray;
+                data[i*4+2] = gray;
             }
             
             ctx.putImageData(imageData, 0, 0);
-            return gray;
         }
         
-        // Calcula correlação cruzada normalizada entre duas imagens
-        function normalizedCrossCorrelation(img1, img2, w, h) {
+        // Carrega imagem selecionada pelo usuário
+        function loadImageFromFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        debugLog(`Imagem carregada: ${img.width}x${img.height}`);
+                        
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = targetWidth;
+                        canvas.height = targetHeight;
+                        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                        
+                        // Pré-processamento
+                        preprocessImage(ctx, targetWidth, targetHeight);
+                        
+                        // Extrai dados
+                        const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+                        targetTemplate = new Uint8Array(targetWidth * targetHeight);
+                        
+                        for (let i = 0; i < targetWidth * targetHeight; i++) {
+                            targetTemplate[i] = imageData.data[i*4];
+                        }
+                        
+                        // Preview
+                        targetPreview.getContext('2d').drawImage(canvas, 0, 0, 60, 60);
+                        
+                        debugLog(`✅ Template carregado! Média: ${targetTemplate.reduce((a,b)=>a+b,0)/targetTemplate.length}`);
+                        statusDiv.innerHTML = "✅ Imagem carregada! Clique em Iniciar Câmera";
+                        startBtn.disabled = false;
+                        resolve();
+                    };
+                    img.src = e.target.result;
+                };
+                
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+        
+        // Correlação cruzada normalizada
+        function normalizedCrossCorrelation(img1, img2) {
             let sum1 = 0, sum2 = 0, sum1sq = 0, sum2sq = 0, cross = 0;
-            let n = w * h;
+            let n = img1.length;
             
             for (let i = 0; i < n; i++) {
                 const v1 = img1[i];
@@ -304,10 +352,7 @@
             const mean1 = sum1 / n;
             const mean2 = sum2 / n;
             
-            let numerator = 0;
-            let denom1 = 0;
-            let denom2 = 0;
-            
+            let numerator = 0, denom1 = 0, denom2 = 0;
             for (let i = 0; i < n; i++) {
                 const v1 = img1[i] - mean1;
                 const v2 = img2[i] - mean2;
@@ -317,78 +362,22 @@
             }
             
             const denom = Math.sqrt(denom1 * denom2);
-            return denom === 0 ? 0 : numerator / denom;
+            return denom === 0 ? 0 : Math.max(0, Math.min(1, numerator / denom));
         }
         
-        // Carrega e processa a imagem alvo
-        async function loadTargetImage() {
-            statusDiv.innerHTML = "🖼️ Processando imagem de referência...";
-            
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.crossOrigin = "Anonymous";
-                
-                img.onload = () => {
-                    debugLog(`Imagem carregada: ${img.width}x${img.height}`);
-                    
-                    // Redimensiona para tamanho padrão (100x100)
-                    targetWidth = 100;
-                    targetHeight = 100;
-                    
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = targetWidth;
-                    canvas.height = targetHeight;
-                    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-                    
-                    // Pré-processamento (aumenta contraste, destaca traços)
-                    preprocessImage(ctx, targetWidth, targetHeight, true);
-                    
-                    // Extrai dados da imagem processada
-                    const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-                    targetTemplate = new Uint8Array(targetWidth * targetHeight);
-                    
-                    for (let i = 0; i < targetWidth * targetHeight; i++) {
-                        targetTemplate[i] = imageData.data[i*4]; // R = G = B após pré-processamento
-                    }
-                    
-                    // Mostra preview
-                    targetPreview.getContext('2d').drawImage(canvas, 0, 0, 80, 80);
-                    
-                    debugLog(`✅ Template carregado: ${targetWidth}x${targetHeight}`);
-                    debugLog(`Média do template: ${targetTemplate.reduce((a,b)=>a+b,0)/targetTemplate.length}`);
-                    
-                    statusDiv.innerHTML = "✅ Imagem pronta! Clique em Iniciar Câmera";
-                    startBtn.disabled = false;
-                    resolve();
-                };
-                
-                img.onerror = () => {
-                    reject(new Error("Falha ao carregar imagem. Verifique o link."));
-                };
-                
-                img.src = TARGET_IMAGE_URL;
-                setTimeout(() => reject(new Error("Timeout ao carregar imagem")), 15000);
-            });
-        }
-        
-        // Processa um frame da câmera e compara com o template
+        // Processa frame da câmera
         function processFrame(videoElement) {
             if (!targetTemplate) return 0;
             
-            // Cria canvas para capturar o frame
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            // Redimensiona o frame para o mesmo tamanho do template
             canvas.width = targetWidth;
             canvas.height = targetHeight;
             ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
             
-            // Pré-processamento do frame
-            preprocessImage(ctx, targetWidth, targetHeight, true);
+            preprocessImage(ctx, targetWidth, targetHeight);
             
-            // Extrai dados do frame processado
             const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
             const frameData = new Uint8Array(targetWidth * targetHeight);
             
@@ -396,16 +385,12 @@
                 frameData[i] = imageData.data[i*4];
             }
             
-            // Atualiza preview do frame
-            framePreview.getContext('2d').drawImage(canvas, 0, 0, 80, 80);
+            // Atualiza preview
+            framePreview.getContext('2d').drawImage(canvas, 0, 0, 60, 60);
             
-            // Calcula correlação
-            const correlation = normalizedCrossCorrelation(targetTemplate, frameData, targetWidth, targetHeight);
-            
-            return Math.max(0, Math.min(1, correlation));
+            return normalizedCrossCorrelation(targetTemplate, frameData);
         }
         
-        // Loop de escaneamento
         function startScanning() {
             let lastSimilarity = 0;
             let stableCount = 0;
@@ -415,7 +400,6 @@
                 
                 const similarity = processFrame(video);
                 
-                // Suaviza a similaridade (média móvel)
                 lastSimilarities.push(similarity);
                 if (lastSimilarities.length > 5) lastSimilarities.shift();
                 const avgSimilarity = lastSimilarities.reduce((a,b) => a+b, 0) / lastSimilarities.length;
@@ -424,7 +408,6 @@
                 similaritySpan.textContent = percent;
                 progressFill.style.width = percent + "%";
                 
-                // Feedback visual baseado na similaridade
                 if (avgSimilarity >= SIMILARITY_THRESHOLD) {
                     progressFill.style.background = "linear-gradient(90deg, #2ecc71, #27ae60)";
                 } else if (avgSimilarity >= 0.15) {
@@ -433,7 +416,6 @@
                     progressFill.style.background = "linear-gradient(90deg, #e74c3c, #c0392b)";
                 }
                 
-                // Verifica estabilidade antes de abrir
                 if (avgSimilarity >= SIMILARITY_THRESHOLD) {
                     const diff = Math.abs(avgSimilarity - lastSimilarity);
                     if (diff < 0.03) {
@@ -444,35 +426,18 @@
                     
                     if (stableCount >= 4 && !isVideoOpened) {
                         debugLog(`✅ RECONHECIDO! Similaridade: ${percent}%`);
-                        statusDiv.innerHTML = `✅ IMAGEM RECONHECIDA! (${percent}%) Abrindo vídeo...`;
-                        statusDiv.style.color = "#2ecc71";
+                        statusDiv.innerHTML = `✅ IMAGEM RECONHECIDA! Abrindo vídeo...`;
                         isVideoOpened = true;
-                        
-                        setTimeout(() => {
-                            window.location.href = VIDEO_URL;
-                        }, 500);
+                        setTimeout(() => { window.location.href = VIDEO_URL; }, 500);
                     } else {
                         statusDiv.innerHTML = `🎯 Detectando... ${percent}% - Mantenha firme`;
-                        statusDiv.style.color = "#2ecc71";
                     }
                 } else {
                     stableCount = 0;
-                    if (avgSimilarity > 0.10) {
-                        statusDiv.innerHTML = `🔍 Aproxime mais... ${percent}%`;
-                        statusDiv.style.color = "#f39c12";
-                    } else {
-                        statusDiv.innerHTML = `🔍 Escaneando traços... ${percent}%`;
-                        statusDiv.style.color = "#ffd700";
-                    }
+                    statusDiv.innerHTML = `🔍 Escaneando... ${percent}%`;
                 }
                 
                 lastSimilarity = avgSimilarity;
-                
-                // Debug a cada 10 frames
-                if (Math.random() < 0.1) {
-                    debugLog(`Similaridade: ${percent}% | Estável: ${stableCount}`);
-                }
-                
             }, 150);
         }
         
@@ -485,49 +450,44 @@
             statusDiv.innerHTML = "🎥 Solicitando acesso à câmera...";
             
             try {
-                // Tenta câmera traseira
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({ 
                         video: { facingMode: { exact: "environment" } } 
                     });
-                    debugLog("✅ Câmera traseira ativada");
                 } catch (e) {
-                    debugLog("Usando câmera padrão");
                     stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 }
                 
                 video.srcObject = stream;
-                
                 await new Promise((resolve) => {
                     video.onloadedmetadata = () => { video.play(); resolve(); };
                 });
                 
-                statusDiv.innerHTML = "🔍 Escaneando... Aproxime a câmera dos traços finos";
+                statusDiv.innerHTML = "🔍 Escaneando... Aproxime a câmera";
                 startBtn.style.display = 'none';
                 permissionHint.style.display = 'none';
-                
-                // Limpa similaridades anteriores
                 lastSimilarities = [];
                 startScanning();
                 
             } catch (error) {
                 debugLog("❌ Erro: " + error.message);
                 statusDiv.innerHTML = "❌ Erro: " + error.message;
-                
                 if (error.name === 'NotAllowedError') {
                     permissionHint.style.display = 'block';
                 }
             }
         }
         
-        startBtn.addEventListener('click', startCamera);
-        
-        // Inicializa
-        loadTargetImage().catch(err => {
-            debugLog("❌ " + err.message);
-            statusDiv.innerHTML = "❌ " + err.message;
-            statusDiv.style.color = "#e74c3c";
+        imageUpload.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                loadImageFromFile(e.target.files[0]).catch(err => {
+                    debugLog("❌ " + err.message);
+                    statusDiv.innerHTML = "❌ Falha ao carregar imagem";
+                });
+            }
         });
+        
+        startBtn.addEventListener('click', startCamera);
         
         window.addEventListener('beforeunload', () => {
             if (stream) stream.getTracks().forEach(track => track.stop());
