@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Scanner de Imagem - Preto e Branco</title>
+    <title>Scanner - Traços Finos em Fundo Branco</title>
     <style>
         * {
             margin: 0;
@@ -77,6 +77,11 @@
             transform: scale(0.97);
         }
         
+        .btn-camera:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
         .status {
             background: rgba(0,0,0,0.6);
             padding: 12px;
@@ -115,6 +120,7 @@
             color: #ccc;
             font-size: 0.7rem;
             margin-top: 12px;
+            line-height: 1.4;
         }
         
         .permission-hint {
@@ -127,18 +133,32 @@
             color: #e74c3c;
             display: none;
         }
+        
+        .debug {
+            margin-top: 10px;
+            font-size: 0.6rem;
+            color: #888;
+            word-break: break-all;
+            max-height: 60px;
+            overflow-y: auto;
+        }
+        
+        .match-indicator {
+            margin-top: 10px;
+            font-size: 0.8rem;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📷 Escaneie a Imagem</h1>
-        <div class="sub">Aponte a câmera para a imagem</div>
+        <h1>✏️ Escaneie a Imagem</h1>
+        <div class="sub">Traços finos sobre fundo branco</div>
         
         <div class="video-wrapper">
             <video id="video" autoplay playsinline muted></video>
         </div>
         
-        <button class="btn-camera" id="startCameraBtn">📸 INICIAR CÂMERA</button>
+        <button class="btn-camera" id="startCameraBtn" disabled>📸 INICIAR CÂMERA</button>
         
         <div class="similarity">
             Correspondência: <span id="similarity-value">0</span>%
@@ -148,141 +168,218 @@
         </div>
         
         <div class="status" id="status">
-            ⏳ Clique em "Iniciar Câmera"
+            ⏳ Carregando...
         </div>
         
+        <div class="match-indicator" id="matchIndicator"></div>
+        
         <div class="instruction">
-            💡 Dica: Imagem em preto e branco é mais fácil de reconhecer!<br>
-            Mantenha o celular parado por 1-2 segundos sobre a imagem.
+            💡 DICAS PARA IMAGEM DE TRAÇOS FINOS:<br>
+            • Mantenha o celular PARADO sobre a imagem<br>
+            • A imagem deve estar BEM ILUMINADA<br>
+            • Centralize os traços finos na tela<br>
+            • O reconhecimento ocorre ao atingir 35%
         </div>
         
         <div class="permission-hint" id="permissionHint">
             🔒 Permissão negada. Clique no ícone de câmera na barra de endereço.
         </div>
+        
+        <div class="debug" id="debug"></div>
     </div>
 
     <script>
         // ============================================
-        // CONFIGURAÇÕES - IMAGEM PRETO E BRANCO
+        // CONFIGURAÇÕES PARA TRAÇOS FINOS
         // ============================================
         
         const VIDEO_URL = "https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4";
         const TARGET_IMAGE_URL = "https://static.wixstatic.com/media/886022_cdf22739c43946babb0f7b02e640fee7~mv2.jpg";
         
-        // Limiar de detecção (mais baixo para preto e branco - 45%)
-        const DETECTION_THRESHOLD = 0.45;
+        // Limiar baixo para traços finos (35%)
+        const SIMILARITY_THRESHOLD = 0.35;
         
         // ============================================
         
         const video = document.getElementById('video');
         const startBtn = document.getElementById('startCameraBtn');
         const statusDiv = document.getElementById('status');
-        const similaritySpan = document.getElementById('similarity-value');
+        const similaritySpan = document.getElementById('similiarity-value');
         const progressFill = document.getElementById('progress-fill');
         const permissionHint = document.getElementById('permissionHint');
+        const debugDiv = document.getElementById('debug');
+        const matchIndicator = document.getElementById('matchIndicator');
         
         let stream = null;
         let scanInterval = null;
-        let targetHistogram = null;
+        let targetData = null;
+        let targetWidth = 0, targetHeight = 0;
         let isVideoOpened = false;
         
-        // Converte imagem para escala de cinza e calcula histograma
-        function getGrayscaleHistogram(imgData, width, height) {
-            const histogram = new Array(256).fill(0);
-            
-            for (let i = 0; i < imgData.data.length; i += 4) {
-                // Fórmula de luminância (percepção humana)
-                const gray = Math.round(0.299 * imgData.data[i] + 0.587 * imgData.data[i+1] + 0.114 * imgData.data[i+2]);
-                histogram[gray]++;
+        function debugLog(msg) {
+            console.log(msg);
+            debugDiv.innerHTML = new Date().toLocaleTimeString() + " - " + msg + "<br>" + debugDiv.innerHTML;
+            if (debugDiv.innerHTML.split("<br>").length > 5) {
+                debugDiv.innerHTML = debugDiv.innerHTML.split("<br>").slice(0, 4).join("<br>");
             }
-            
-            // Normaliza o histograma
-            const total = imgData.data.length / 4;
-            for (let i = 0; i < 256; i++) {
-                histogram[i] = histogram[i] / total;
-            }
-            
-            return histogram;
         }
         
-        // Calcula similaridade entre dois histogramas (método de interseção)
-        function compareHistograms(hist1, hist2) {
-            let similarity = 0;
-            for (let i = 0; i < 256; i++) {
-                similarity += Math.min(hist1[i], hist2[i]);
-            }
-            return similarity;
-        }
-        
-        // Detecta bordas na imagem (importante para preto e branco)
-        function detectEdges(imgData, width, height) {
-            // Versão simplificada - conta pixels de borda
-            let edgePixels = 0;
-            let totalPixels = 0;
+        // Converte imagem para contorno (detecta bordas - ideal para traços finos)
+        function detectEdges(ctx, width, height) {
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
             
+            // Primeiro converte para escala de cinza
+            const gray = new Uint8Array(width * height);
+            for (let i = 0; i < width * height; i++) {
+                const r = data[i*4];
+                const g = data[i*4+1];
+                const b = data[i*4+2];
+                gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+            }
+            
+            // Detecta bordas com operador Sobel simplificado
+            const edges = new Uint8Array(width * height);
             for (let y = 1; y < height - 1; y++) {
                 for (let x = 1; x < width - 1; x++) {
-                    const idx = (y * width + x) * 4;
-                    const gray = 0.299 * imgData.data[idx] + 0.587 * imgData.data[idx+1] + 0.114 * imgData.data[idx+2];
+                    const idx = y * width + x;
                     
-                    // Pixels vizinhos
-                    const idxUp = ((y-1) * width + x) * 4;
-                    const grayUp = 0.299 * imgData.data[idxUp] + 0.587 * imgData.data[idxUp+1] + 0.114 * imgData.data[idxUp+2];
+                    // Gradiente horizontal
+                    const gx = -gray[idx - width - 1] + gray[idx - width + 1]
+                              -2 * gray[idx - 1] + 2 * gray[idx + 1]
+                              -gray[idx + width - 1] + gray[idx + width + 1];
                     
-                    const diff = Math.abs(gray - grayUp);
-                    if (diff > 30) edgePixels++;
-                    totalPixels++;
+                    // Gradiente vertical
+                    const gy = -gray[idx - width - 1] -2 * gray[idx - width] - gray[idx - width + 1]
+                              + gray[idx + width - 1] + 2 * gray[idx + width] + gray[idx + width + 1];
+                    
+                    const magnitude = Math.sqrt(gx * gx + gy * gy);
+                    edges[idx] = Math.min(255, magnitude);
                 }
             }
             
-            return edgePixels / totalPixels;
+            // Retorna imagem de bordas
+            for (let i = 0; i < width * height; i++) {
+                const val = edges[i];
+                data[i*4] = val;
+                data[i*4+1] = val;
+                data[i*4+2] = val;
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            return edges;
         }
         
-        // Função principal de reconhecimento
+        // Calcula assinatura da imagem (baseada em bordas)
+        function calculateSignature(edges, width, height) {
+            // Divide a imagem em grid 8x8
+            const gridSize = 8;
+            const cellW = Math.floor(width / gridSize);
+            const cellH = Math.floor(height / gridSize);
+            const signature = [];
+            
+            for (let gy = 0; gy < gridSize; gy++) {
+                for (let gx = 0; gx < gridSize; gx++) {
+                    let sum = 0;
+                    let count = 0;
+                    
+                    const startX = gx * cellW;
+                    const startY = gy * cellH;
+                    const endX = Math.min(startX + cellW, width);
+                    const endY = Math.min(startY + cellH, height);
+                    
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            sum += edges[y * width + x];
+                            count++;
+                        }
+                    }
+                    
+                    signature.push(sum / count);
+                }
+            }
+            
+            return signature;
+        }
+        
+        // Compara duas assinaturas
+        function compareSignatures(sig1, sig2) {
+            if (sig1.length !== sig2.length) return 0;
+            
+            let diff = 0;
+            for (let i = 0; i < sig1.length; i++) {
+                diff += Math.abs(sig1[i] - sig2[i]);
+            }
+            
+            // Normaliza para similaridade (0 a 1)
+            const maxDiff = 255 * sig1.length;
+            const similarity = 1 - (diff / maxDiff);
+            
+            return Math.max(0, Math.min(1, similarity));
+        }
+        
+        // Carrega e processa a imagem alvo
         async function loadTargetImage() {
-            statusDiv.innerHTML = "🖼️ Carregando imagem de referência...";
+            statusDiv.innerHTML = "🖼️ Processando imagem de referência...";
             
             return new Promise((resolve, reject) => {
                 const img = new Image();
                 img.crossOrigin = "Anonymous";
                 
                 img.onload = () => {
-                    // Cria canvas para processar a imagem alvo
+                    debugLog(`Imagem carregada: ${img.width}x${img.height}`);
+                    
+                    // Cria canvas para processamento
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
                     
-                    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    // Redimensiona para tamanho padrão
+                    targetWidth = 400;
+                    targetHeight = Math.floor((img.height / img.width) * targetWidth);
+                    canvas.width = targetWidth;
+                    canvas.height = targetHeight;
                     
-                    // Calcula histograma da imagem alvo
-                    targetHistogram = getGrayscaleHistogram(imgData, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
                     
-                    console.log("✅ Imagem de referência carregada!");
-                    console.log("Histograma calculado");
+                    // Detecta bordas (traços finos)
+                    const edges = detectEdges(ctx, targetWidth, targetHeight);
                     
-                    statusDiv.innerHTML = "✅ Imagem carregada! Inicie a câmera.";
+                    // Calcula assinatura
+                    targetData = calculateSignature(edges, targetWidth, targetHeight);
+                    
+                    debugLog(`✅ Imagem processada. Assinatura com ${targetData.length} pontos`);
+                    debugLog(`Traços detectados! Limiar: ${SIMILARITY_THRESHOLD * 100}%`);
+                    
+                    statusDiv.innerHTML = "✅ Imagem pronta! Clique em Iniciar";
+                    startBtn.disabled = false;
                     resolve();
                 };
                 
                 img.onerror = () => {
-                    reject(new Error("Falha ao carregar imagem de referência"));
+                    reject(new Error("Falha ao carregar imagem"));
                 };
                 
                 img.src = TARGET_IMAGE_URL;
+                setTimeout(() => reject(new Error("Timeout")), 10000);
             });
         }
         
-        // Compara o frame atual com a imagem alvo
-        function compareWithTarget(videoFrame) {
-            if (!targetHistogram) return 0;
+        // Processa um frame da câmera
+        function processFrame(frameCanvas) {
+            if (!targetData) return 0;
             
-            // Calcula histograma do frame
-            const frameHistogram = getGrayscaleHistogram(videoFrame, videoFrame.width, videoFrame.height);
+            const ctx = frameCanvas.getContext('2d');
+            const width = frameCanvas.width;
+            const height = frameCanvas.height;
             
-            // Calcula similaridade
-            const similarity = compareHistograms(targetHistogram, frameHistogram);
+            // Detecta bordas no frame
+            const edges = detectEdges(ctx, width, height);
+            
+            // Calcula assinatura do frame
+            const signature = calculateSignature(edges, width, height);
+            
+            // Compara com a imagem alvo
+            const similarity = compareSignatures(targetData, signature);
             
             return similarity;
         }
@@ -291,149 +388,137 @@
         function startScanning() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
+            
             let lastSimilarity = 0;
-            let stableCount = 0;
+            let stableFrames = 0;
             
             scanInterval = setInterval(() => {
                 if (!video.videoWidth || !video.videoHeight) return;
                 
-                // Captura frame atual
+                // Captura frame
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
-                // Reduz resolução para processamento mais rápido
-                const tempCanvas = document.createElement('canvas');
-                const tempCtx = tempCanvas.getContext('2d');
-                const smallWidth = Math.floor(canvas.width / 2);
-                const smallHeight = Math.floor(canvas.height / 2);
-                tempCanvas.width = smallWidth;
-                tempCanvas.height = smallHeight;
-                tempCtx.drawImage(canvas, 0, 0, smallWidth, smallHeight);
+                // Processa em resolução menor para performance
+                const smallCanvas = document.createElement('canvas');
+                const smallCtx = smallCanvas.getContext('2d');
+                const smallWidth = 200;
+                const smallHeight = Math.floor((canvas.height / canvas.width) * smallWidth);
+                smallCanvas.width = smallWidth;
+                smallCanvas.height = smallHeight;
+                smallCtx.drawImage(canvas, 0, 0, smallWidth, smallHeight);
                 
-                const imgData = tempCtx.getImageData(0, 0, smallWidth, smallHeight);
+                const similarity = processFrame(smallCanvas);
                 
-                // Calcula similaridade
-                let similarity = compareWithTarget(imgData);
-                
-                // Garante que similarity é um número válido
-                if (isNaN(similarity)) similarity = 0;
-                
-                // Atualiza UI
                 const percent = Math.round(similarity * 100);
                 similaritySpan.textContent = percent;
                 progressFill.style.width = percent + "%";
                 
-                // Muda cor da barra baseado na similaridade
-                if (similarity >= DETECTION_THRESHOLD) {
+                // Feedback visual
+                if (similarity >= SIMILARITY_THRESHOLD) {
                     progressFill.style.background = "linear-gradient(90deg, #2ecc71, #27ae60)";
-                } else if (similarity >= 0.3) {
+                    matchIndicator.innerHTML = "✅ TRAÇOS RECONHECIDOS!";
+                    matchIndicator.style.color = "#2ecc71";
+                } else if (similarity >= 0.20) {
                     progressFill.style.background = "linear-gradient(90deg, #f39c12, #e67e22)";
+                    matchIndicator.innerHTML = "🎯 Detectando traços... " + percent + "%";
+                    matchIndicator.style.color = "#f39c12";
                 } else {
                     progressFill.style.background = "linear-gradient(90deg, #e74c3c, #c0392b)";
+                    matchIndicator.innerHTML = "🔍 Procure os traços finos...";
+                    matchIndicator.style.color = "#aaa";
                 }
                 
-                // Verifica estabilidade (evita falsos positivos)
-                if (similarity >= DETECTION_THRESHOLD) {
-                    if (Math.abs(similarity - lastSimilarity) < 0.05) {
-                        stableCount++;
+                // Verifica estabilidade para abrir vídeo
+                if (similarity >= SIMILARITY_THRESHOLD) {
+                    const diff = Math.abs(similarity - lastSimilarity);
+                    if (diff < 0.05) {
+                        stableFrames++;
                     } else {
-                        stableCount = 0;
+                        stableFrames = 0;
                     }
                     
-                    if (stableCount >= 5 && !isVideoOpened) {
-                        statusDiv.innerHTML = "✅ IMAGEM RECONHECIDA! Abrindo vídeo...";
+                    if (stableFrames >= 5 && !isVideoOpened) {
+                        statusDiv.innerHTML = "✅ TRAÇOS FINOS RECONHECIDOS! Abrindo vídeo...";
                         statusDiv.style.color = "#2ecc71";
                         isVideoOpened = true;
                         
                         setTimeout(() => {
                             window.location.href = VIDEO_URL;
                         }, 500);
-                    } else {
-                        statusDiv.innerHTML = "🎯 IMAGEM DETECTADA! Mantenha firme... " + percent + "%";
-                        statusDiv.style.color = "#2ecc71";
                     }
+                    
+                    statusDiv.innerHTML = `🎯 Traços detectados! ${percent}% - Mantenha firme...`;
+                    statusDiv.style.color = "#2ecc71";
                 } else {
-                    stableCount = 0;
-                    if (similarity > 0.3) {
-                        statusDiv.innerHTML = "🔍 Aproxime mais a câmera... " + percent + "%";
+                    stableFrames = 0;
+                    if (similarity > 0.15) {
+                        statusDiv.innerHTML = `🔍 Aproxime mais... ${percent}%`;
                         statusDiv.style.color = "#f39c12";
                     } else {
-                        statusDiv.innerHTML = "🔍 Escaneando... aponte para a imagem";
+                        statusDiv.innerHTML = `🔍 Escaneando traços finos... ${percent}%`;
                         statusDiv.style.color = "#ffd700";
                     }
                 }
                 
                 lastSimilarity = similarity;
                 
-            }, 150); // 150ms entre cada frame
+            }, 200);
         }
         
         async function startCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                if (scanInterval) clearInterval(scanInterval);
+            }
+            
             statusDiv.innerHTML = "🎥 Solicitando acesso à câmera...";
             
             try {
-                // Primeiro tenta câmera traseira
-                const constraints = {
-                    video: { facingMode: { exact: "environment" } }
-                };
-                
+                // Tenta câmera traseira
                 try {
-                    stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: { exact: "environment" } } 
+                    });
                 } catch (e) {
-                    console.log("Tentando câmera padrão...");
+                    debugLog("Usando câmera padrão");
                     stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 }
                 
                 video.srcObject = stream;
-                await video.play();
                 
-                statusDiv.innerHTML = "🔍 Câmera ativa! Aponte para a imagem";
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => { video.play(); resolve(); };
+                });
+                
+                statusDiv.innerHTML = "🔍 Escaneando traços finos... (meta: 35%)";
                 startBtn.style.display = 'none';
                 permissionHint.style.display = 'none';
-                
-                // Aguarda um momento e inicia o escaneamento
-                setTimeout(() => {
-                    startScanning();
-                }, 500);
+                startScanning();
                 
             } catch (error) {
-                console.error("Erro:", error);
+                debugLog("Erro: " + error.message);
                 statusDiv.innerHTML = "❌ Erro: " + error.message;
                 
-                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                if (error.name === 'NotAllowedError') {
                     permissionHint.style.display = 'block';
                 }
             }
         }
         
-        // Carrega a imagem alvo primeiro
-        async function init() {
-            try {
-                await loadTargetImage();
-                startBtn.disabled = false;
-                startBtn.style.opacity = "1";
-            } catch (error) {
-                statusDiv.innerHTML = "❌ " + error.message;
-                startBtn.disabled = true;
-                startBtn.style.opacity = "0.5";
-            }
-        }
-        
         startBtn.addEventListener('click', startCamera);
         
-        // Limpeza
-        window.addEventListener('beforeunload', () => {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            if (scanInterval) {
-                clearInterval(scanInterval);
-            }
+        // Inicializa
+        loadTargetImage().catch(err => {
+            debugLog("❌ " + err.message);
+            statusDiv.innerHTML = "❌ " + err.message;
         });
         
-        // Inicializa
-        init();
+        window.addEventListener('beforeunload', () => {
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (scanInterval) clearInterval(scanInterval);
+        });
     </script>
 </body>
 </html>
