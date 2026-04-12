@@ -3,117 +3,239 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>REALIDADE AUMENTADA</title>
+    <title>REALIDADE AUMENTADA - Seus Cartões</title>
     <style>
-        body { margin: 0; overflow: hidden; }
-        .instructions {
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .info {
             position: fixed;
             bottom: 20px;
             left: 20px;
             right: 20px;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
             color: white;
             padding: 15px;
-            border-radius: 20px;
+            border-radius: 25px;
             text-align: center;
             z-index: 100;
             font-size: 14px;
+            font-weight: 500;
+            pointer-events: none;
         }
+        
         .status {
             position: fixed;
             top: 20px;
             left: 20px;
             background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(5px);
             color: #ffd700;
-            padding: 8px 16px;
-            border-radius: 20px;
+            padding: 8px 18px;
+            border-radius: 30px;
             z-index: 100;
             font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            pointer-events: none;
         }
-        .btn-start {
+        
+        .start-btn {
             position: fixed;
             bottom: 100px;
             left: 50%;
             transform: translateX(-50%);
-            background: #2ecc71;
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
             color: white;
             border: none;
             padding: 16px 32px;
-            border-radius: 50px;
+            border-radius: 60px;
             font-size: 18px;
             font-weight: bold;
             z-index: 200;
             cursor: pointer;
+            box-shadow: 0 4px 20px rgba(46,204,113,0.4);
+            transition: transform 0.2s;
+        }
+        
+        .start-btn:active {
+            transform: translateX(-50%) scale(0.97);
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .camera-error {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(231,76,60,0.95);
+            color: white;
+            padding: 20px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 300;
+            max-width: 80%;
+            display: none;
         }
     </style>
+    <!-- MindAR -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
 </head>
 <body>
-    <div class="status" id="status">⏳ Pronto</div>
-    <div class="instructions">🎯 Aponte a câmera para a imagem impressa</div>
-    <button class="btn-start" id="startBtn">📷 INICIAR AR</button>
+    <div class="status" id="status">📱 Clique em Iniciar</div>
+    <div class="info" id="info">
+        🎯 Aponte a câmera para o CARTÃO impresso<br>
+        O vídeo vai aparecer sobre a imagem!
+    </div>
+    <button class="start-btn" id="startBtn">📷 INICIAR REALIDADE AUMENTADA</button>
+    <div class="camera-error" id="cameraError">
+        ❌ Não foi possível acessar a câmera.<br>
+        Verifique as permissões do navegador.
+    </div>
 
     <script>
+        // CONFIGURAÇÕES
         const VIDEO_URL = "https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4";
-        
-        // USA A IMAGEM LOCAL (você precisa colocar o arquivo target.jpg na mesma pasta)
-        const TARGET_IMAGE = "target.jpg";
+        // Use a imagem LOCAL (você vai colocar o arquivo na mesma pasta)
+        const TARGET_IMAGE = "marcador.jpg";
         
         const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
+        const infoDiv = document.getElementById('info');
+        const cameraErrorDiv = document.getElementById('cameraError');
         
-        startBtn.addEventListener('click', () => {
-            startBtn.style.display = 'none';
-            statusDiv.innerHTML = "🎥 Iniciando...";
+        let mindar = null;
+        
+        startBtn.addEventListener('click', async () => {
+            startBtn.classList.add('hidden');
+            statusDiv.innerHTML = "🎥 Solicitando acesso à câmera...";
             
-            const mindar = document.createElement('mindar-image');
+            try {
+                // Testa permissão da câmera primeiro
+                const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                testStream.getTracks().forEach(track => track.stop());
+                
+                // Inicia o AR
+                startAR();
+                
+            } catch (error) {
+                console.error("Erro de câmera:", error);
+                statusDiv.innerHTML = "❌ Erro: Permissão da câmera";
+                startBtn.classList.remove('hidden');
+                cameraErrorDiv.style.display = 'block';
+                setTimeout(() => {
+                    cameraErrorDiv.style.display = 'none';
+                }, 5000);
+                
+                if (error.name === 'NotAllowedError') {
+                    alert("🔒 Permissão da câmera negada!\n\nClique no ícone de câmera na barra de endereço e selecione 'Permitir'.");
+                }
+            }
+        });
+        
+        function startAR() {
+            statusDiv.innerHTML = "🖼️ Carregando marcador...";
+            
+            // Remove elemento anterior se existir
+            if (mindar) {
+                mindar.remove();
+            }
+            
+            // Cria o elemento MindAR
+            mindar = document.createElement('mindar-image');
             mindar.setAttribute('auto-start', 'true');
             mindar.style.width = '100%';
             mindar.style.height = '100%';
             mindar.style.position = 'fixed';
             mindar.style.top = '0';
             mindar.style.left = '0';
+            mindar.style.zIndex = '0';
             
-            mindar.targets = [{
-                imageUrl: TARGET_IMAGE,
-                threshold: 0.7,
-                width: 1.0
-            }];
+            // Configura o alvo com a imagem LOCAL
+            mindar.targets = [
+                {
+                    imageUrl: TARGET_IMAGE,
+                    threshold: 0.7,
+                    width: 1.0
+                }
+            ];
             
             document.body.appendChild(mindar);
             
             let videoAdded = false;
+            let videoElement = null;
             
+            // Aguarda o MindAR carregar
             mindar.addEventListener('load', () => {
-                statusDiv.innerHTML = "🔍 Escaneando...";
+                statusDiv.innerHTML = "🔍 ESCANEANDO... Aponte para o cartão";
+                console.log("✅ MindAR carregado com sucesso!");
+                infoDiv.innerHTML = "🎯 APONTE A CÂMERA PARA O CARTÃO IMPRESSO!";
             });
             
+            // Quando a imagem for detectada
             mindar.addEventListener('targetFound', () => {
-                statusDiv.innerHTML = "🎯 IMAGEM DETECTADA!";
-                if (!videoAdded) {
-                    videoAdded = true;
-                    const video = document.createElement('a-video');
-                    video.setAttribute('src', VIDEO_URL);
-                    video.setAttribute('width', '1.2');
-                    video.setAttribute('height', '0.68');
-                    video.setAttribute('autoplay', 'true');
-                    video.setAttribute('loop', 'true');
-                    video.setAttribute('controls', 'true');
-                    
-                    const marker = mindar.querySelector('.mindar-marker');
-                    if (marker) marker.appendChild(video);
+                statusDiv.innerHTML = "✅ CARTÃO DETECTADO! Vídeo aparecendo...";
+                console.log("🎯 Imagem encontrada!");
+                
+                if (videoAdded) return;
+                videoAdded = true;
+                
+                // Cria o elemento de vídeo no espaço AR
+                videoElement = document.createElement('a-video');
+                videoElement.setAttribute('src', VIDEO_URL);
+                videoElement.setAttribute('width', '1.2');
+                videoElement.setAttribute('height', '0.68');
+                videoElement.setAttribute('position', '0 0 0');
+                videoElement.setAttribute('rotation', '0 0 0');
+                videoElement.setAttribute('autoplay', 'true');
+                videoElement.setAttribute('loop', 'true');
+                videoElement.setAttribute('controls', 'true');
+                
+                // Adiciona ao marcador
+                const marker = mindar.querySelector('.mindar-marker');
+                if (marker) {
+                    marker.appendChild(videoElement);
+                } else {
+                    mindar.appendChild(videoElement);
                 }
             });
             
+            // Quando a imagem for perdida
             mindar.addEventListener('targetLost', () => {
-                statusDiv.innerHTML = "🔍 Imagem perdida";
-                const v = document.querySelector('a-video');
-                if (v) v.remove();
-                videoAdded = false;
+                statusDiv.innerHTML = "🔍 Cartão perdido. Aponte novamente...";
+                if (videoElement) {
+                    videoElement.remove();
+                    videoAdded = false;
+                }
             });
             
-            mindar.start();
+            // Erros
+            mindar.addEventListener('error', (e) => {
+                console.error("Erro MindAR:", e);
+                statusDiv.innerHTML = "❌ Erro no reconhecimento";
+            });
+            
+            // Inicia
+            mindar.start().catch(err => {
+                console.error("Erro ao iniciar:", err);
+                statusDiv.innerHTML = "❌ Erro ao iniciar: " + err.message;
+                startBtn.classList.remove('hidden');
+            });
+        }
+        
+        // Limpeza ao sair
+        window.addEventListener('beforeunload', () => {
+            if (mindar) {
+                mindar.stop();
+            }
         });
     </script>
 </body>
