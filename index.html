@@ -3,46 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>REALIDADE AUMENTADA - Vídeo na Imagem</title>
+    <title>REALIDADE AUMENTADA</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        
+        body { margin: 0; overflow: hidden; }
         .instructions {
             position: fixed;
             bottom: 20px;
             left: 20px;
             right: 20px;
             background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(10px);
             color: white;
             padding: 15px;
             border-radius: 20px;
             text-align: center;
             z-index: 100;
             font-size: 14px;
-            pointer-events: none;
         }
-        
-        .btn-reset {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #3498db;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 40px;
-            z-index: 100;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: bold;
-            pointer-events: auto;
-        }
-        
         .status {
             position: fixed;
             top: 20px;
@@ -53,182 +29,92 @@
             border-radius: 20px;
             z-index: 100;
             font-size: 12px;
-            font-weight: bold;
-            pointer-events: none;
         }
-        
-        .upload-area {
+        .btn-start {
             position: fixed;
             bottom: 100px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0,0,0,0.8);
-            padding: 15px;
-            border-radius: 20px;
-            z-index: 200;
-            text-align: center;
-            pointer-events: auto;
-        }
-        
-        .upload-area button {
             background: #2ecc71;
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 30px;
-            font-size: 16px;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-size: 18px;
             font-weight: bold;
+            z-index: 200;
             cursor: pointer;
         }
-        
-        .hidden {
-            display: none;
-        }
     </style>
-    <!-- MindAR -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image.prod.js"></script>
-    <!-- Three.js -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
 </head>
 <body>
-    <button class="btn-reset" onclick="location.reload()">🔄 Reiniciar</button>
-    <div class="status" id="status">⏳ Selecione a imagem</div>
-    <div class="instructions" id="instructions">
-        🎯 1. Selecione a imagem do frame inicial<br>
-        🎯 2. Aponte a câmera para a imagem impressa<br>
-        🎯 3. O vídeo aparecerá sobre ela!
-    </div>
-    
-    <div class="upload-area" id="uploadArea">
-        <button id="selectImageBtn">📁 SELECIONAR IMAGEM DO FRAME</button>
-        <input type="file" id="imageInput" accept="image/jpeg,image/png" style="display:none">
-    </div>
+    <div class="status" id="status">⏳ Pronto</div>
+    <div class="instructions">🎯 Aponte a câmera para a imagem impressa</div>
+    <button class="btn-start" id="startBtn">📷 INICIAR AR</button>
 
     <script>
         const VIDEO_URL = "https://video.wixstatic.com/video/886022_77553c517c3b429899495057155559a9/720p/mp4/file.mp4";
         
+        // USA A IMAGEM LOCAL (você precisa colocar o arquivo target.jpg na mesma pasta)
+        const TARGET_IMAGE = "target.jpg";
+        
+        const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
-        const instructions = document.getElementById('instructions');
-        const uploadArea = document.getElementById('uploadArea');
-        const selectImageBtn = document.getElementById('selectImageBtn');
-        const imageInput = document.getElementById('imageInput');
         
-        let mindar = null;
-        let sceneStarted = false;
-        
-        selectImageBtn.addEventListener('click', () => {
-            imageInput.click();
-        });
-        
-        imageInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+        startBtn.addEventListener('click', () => {
+            startBtn.style.display = 'none';
+            statusDiv.innerHTML = "🎥 Iniciando...";
             
-            statusDiv.innerHTML = "🖼️ Processando imagem...";
-            
-            // Converte a imagem selecionada para URL
-            const imageUrl = URL.createObjectURL(file);
-            
-            // Carrega a imagem para obter dimensões
-            const img = new Image();
-            img.onload = () => {
-                statusDiv.innerHTML = "✅ Imagem carregada! Iniciando AR...";
-                startAR(imageUrl, img.width, img.height);
-            };
-            img.src = imageUrl;
-        });
-        
-        function startAR(imageUrl, imgWidth, imgHeight) {
-            // Remove o botão de upload
-            uploadArea.classList.add('hidden');
-            instructions.innerHTML = "🎯 Aponte a câmera para a imagem impressa! O vídeo vai aparecer sobre ela.";
-            
-            // Cria o elemento MindAR
-            mindar = document.createElement('mindar-image');
+            const mindar = document.createElement('mindar-image');
             mindar.setAttribute('auto-start', 'true');
-            mindar.setAttribute('ui-scene', 'scanning');
             mindar.style.width = '100%';
             mindar.style.height = '100%';
             mindar.style.position = 'fixed';
             mindar.style.top = '0';
             mindar.style.left = '0';
-            mindar.style.zIndex = '0';
             
-            // Configura o alvo com a imagem selecionada
-            mindar.targets = [
-                {
-                    imageUrl: imageUrl,
-                    threshold: 0.7,
-                    width: 1.0  // largura em metros no mundo AR
-                }
-            ];
+            mindar.targets = [{
+                imageUrl: TARGET_IMAGE,
+                threshold: 0.7,
+                width: 1.0
+            }];
             
             document.body.appendChild(mindar);
             
-            // Aguarda o MindAR carregar
+            let videoAdded = false;
+            
             mindar.addEventListener('load', () => {
-                statusDiv.innerHTML = "🔍 Escaneando... Aponte para a imagem";
-                console.log("MindAR carregado");
+                statusDiv.innerHTML = "🔍 Escaneando...";
             });
             
-            // Quando a imagem for detectada, adiciona o vídeo
             mindar.addEventListener('targetFound', () => {
-                statusDiv.innerHTML = "🎯 IMAGEM DETECTADA! Vídeo aparecendo...";
-                console.log("Imagem encontrada!");
-                
-                // Verifica se o vídeo já foi adicionado
-                if (document.querySelector('a-video')) return;
-                
-                // Cria o elemento de vídeo no espaço AR
-                const videoElement = document.createElement('a-video');
-                videoElement.setAttribute('src', VIDEO_URL);
-                videoElement.setAttribute('width', '1.2');
-                videoElement.setAttribute('height', '0.68');
-                videoElement.setAttribute('position', '0 0 0');
-                videoElement.setAttribute('rotation', '0 0 0');
-                videoElement.setAttribute('autoplay', 'true');
-                videoElement.setAttribute('loop', 'true');
-                videoElement.setAttribute('controls', 'true');
-                
-                // Adiciona ao marcador
-                const marker = mindar.querySelector('.mindar-marker');
-                if (marker) {
-                    marker.appendChild(videoElement);
+                statusDiv.innerHTML = "🎯 IMAGEM DETECTADA!";
+                if (!videoAdded) {
+                    videoAdded = true;
+                    const video = document.createElement('a-video');
+                    video.setAttribute('src', VIDEO_URL);
+                    video.setAttribute('width', '1.2');
+                    video.setAttribute('height', '0.68');
+                    video.setAttribute('autoplay', 'true');
+                    video.setAttribute('loop', 'true');
+                    video.setAttribute('controls', 'true');
+                    
+                    const marker = mindar.querySelector('.mindar-marker');
+                    if (marker) marker.appendChild(video);
                 }
             });
             
             mindar.addEventListener('targetLost', () => {
-                statusDiv.innerHTML = "🔍 Imagem perdida. Aponte novamente...";
-                // Remove o vídeo quando perder a imagem
-                const videoElem = document.querySelector('a-video');
-                if (videoElem) videoElem.remove();
+                statusDiv.innerHTML = "🔍 Imagem perdida";
+                const v = document.querySelector('a-video');
+                if (v) v.remove();
+                videoAdded = false;
             });
             
-            mindar.addEventListener('error', (e) => {
-                console.error("Erro:", e);
-                statusDiv.innerHTML = "❌ Erro: " + (e.detail || "Tente novamente");
-            });
-            
-            // Inicia
-            mindar.start().catch(err => {
-                console.error("Erro ao iniciar:", err);
-                statusDiv.innerHTML = "❌ Erro ao iniciar câmera";
-            });
-        }
-        
-        // Verifica suporte a câmera
-        async function checkCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach(t => t.stop());
-                return true;
-            } catch (err) {
-                statusDiv.innerHTML = "❌ Permissão da câmera negada";
-                return false;
-            }
-        }
-        
-        checkCamera();
+            mindar.start();
+        });
     </script>
 </body>
 </html>
